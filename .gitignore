@@ -1,0 +1,23 @@
+*.log
+.env
+composer.phar
+composer.lock
+.DS_Store
+Thumbs.db
+/.idea
+/.vscode
+/vendor
+/.settings
+/.buildpath
+/.project
+
+# 运行时
+/runtime
+
+# 本地数据
+# 敏感运行时数据（明文登录凭据、AWS 账号密钥、实例快照）默认忽略，
+# 仅放行预置配置（app-config.json：地区/镜像）与示例文件。
+/data/*
+!/data/app-config.json
+!/data/*.example
+!/data/*.example.*

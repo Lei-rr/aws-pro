@@ -1,0 +1,55 @@
+<?php
+
+declare(strict_types=1);
+
+namespace app\controller\auth;
+
+use app\service\SessionService;
+use app\support\ApiResponse;
+use app\validate\SessionValidate;
+use think\Response;
+
+class SessionController
+{
+    public function __construct(private readonly SessionService $session)
+    {
+    }
+
+    public function store(): Response
+    {
+        $data = validate(SessionValidate::class)
+            ->scene('login')
+            ->checked(input('post.', []));
+
+        return ApiResponse::data($this->session->login(
+            $data['username'],
+            $data['password'],
+            $data['captcha'] ?? null
+        ));
+    }
+
+    public function show(): Response
+    {
+        return ApiResponse::data($this->session->currentSession());
+    }
+
+    public function delete(): Response
+    {
+        $this->session->logout();
+
+        return ApiResponse::noContent();
+    }
+
+    public function updateUser(): Response
+    {
+        $data = validate(SessionValidate::class)
+            ->scene('user')
+            ->checked(input('put.', []));
+
+        return ApiResponse::data($this->session->updateCurrentUser(
+            $data['username'],
+            $data['current_password'],
+            ($data['new_password'] ?? '') !== '' ? $data['new_password'] : null,
+        ));
+    }
+}
