@@ -1,77 +1,84 @@
-![](https://www.thinkphp.cn/uploads/images/20230630/300c856765af4d8ae758c503185f8739.png)
+# aws-pro
 
-ThinkPHP 8
-===============
+AWS Lightsail 实例管理面板，集账号管理、实例运维、区域管理、vCPU 配额查询与年度账单于一体。
 
-## 特性
+基于 ThinkPHP 8 + Vue 3（无构建 ESM）。
 
-* 基于PHP`8.0+`重构
-* 升级`PSR`依赖
-* 依赖`think-orm`3.0+版本
-* 全新的`think-dumper`服务，支持远程调试
-* 支持`6.0`/`6.1`无缝升级
+## 功能
 
-> ThinkPHP8的运行环境要求PHP8.0+
+- **账号管理**：多 AWS 账号（Access Key / Secret Key）的增删改查，密钥脱敏展示
+- **Lightsail 实例**：跨账号 / 区域同步实例列表，创建实例，启停 / 重启 / 删除，分配 / 释放静态 IP，开放端口，备注维护
+- **区域管理**：查看账号下已启用区域，按系统白名单启用新区域
+- **配额查询**：查询各区域 vCPU 配额使用情况
+- **账单**：年度费用与抵扣额度统计（基于 AWS Cost Explorer）
 
-现在开始，你可以使用官方提供的[ThinkChat](https://chat.topthink.com/)，让你在学习ThinkPHP的旅途中享受私人AI助理服务！
+## 技术栈
 
-![](https://www.topthink.com/uploads/assistant/20230630/4d1a3f0ad2958b49bb8189b7ef824cb0.png)
+- **后端**：PHP 8.0+ / ThinkPHP 8，分层为 controller → service → repository，数据走 JSON 文件存储（无数据库）
+- **前端**：Vue 3 + Vue Router + Pinia + Ant Design Vue，**无构建（原生 ESM）**，浏览器直接加载 `public/assets` 下的源码，改完即生效、无需 npm build
+- **第三方 SDK**：AWS SDK for PHP（Lightsail / Cost Explorer / Service Quotas / Account）
 
-ThinkPHP生态服务由[顶想云](https://www.topthink.com)（TOPThink Cloud）提供，为生态提供专业的开发者服务和价值之选。
+## 数据存储
 
-## 文档
+全部业务数据以 JSON 文件存放在 `data/` 目录，通过 `app\support\JsonStore`（文件锁 + 原子写 + 事务）读写：
 
-[完全开发手册](https://doc.thinkphp.cn)
+| 文件 | 内容 | 是否入库 |
+| --- | --- | --- |
+| `config.json` | 登录凭据（明文，单用户） | 否（含敏感信息） |
+| `accounts.json` | AWS 账号密钥 | 否（含敏感信息） |
+| `instances.json` | Lightsail 实例快照 | 否（运行时数据） |
+| `app-config.json` | 区域 / 系统镜像预置配置 | 是 |
+| `config.json.example` | 凭据模板 | 是 |
 
+## 鉴权
 
-## 赞助
+单用户场景，凭据来源为 `data/config.json` 的 `auth.username` / `auth.password`（明文）：
 
-全新的[赞助计划](https://www.thinkphp.cn/sponsor)可以让你通过我们的网站、手册、欢迎页及GIT仓库获得巨大曝光，同时提升企业的品牌声誉，也更好保障ThinkPHP的可持续发展。
+```json
+{
+  "auth": {
+    "username": "admin",
+    "password": "change-me"
+  }
+}
+```
 
-[![](https://www.thinkphp.cn/sponsor/special.svg)](https://www.thinkphp.cn/sponsor/special)
+- 该文件不会自动创建，缺失或凭据为空时直接禁止登录，需手动按 `config.json.example` 创建
+- 修改用户名 / 密码直接编辑该文件，应用内不提供在线改密
+- 登录失败一次后强制要求图形验证码，防暴力破解
 
-[![](https://www.thinkphp.cn/sponsor.svg)](https://www.thinkphp.cn/sponsor)
+## 部署
 
-## 安装
+1. 安装依赖：
 
-~~~
-composer create-project topthink/think tp
-~~~
+   ```
+   composer install
+   ```
 
-启动服务
+2. 创建登录凭据：
 
-~~~
-cd tp
-php think run
-~~~
+   ```
+   cp data/config.json.example data/config.json
+   # 编辑 data/config.json 设置用户名和密码
+   ```
 
-然后就可以在浏览器中访问
+3. 将 Web 服务器（Nginx / OpenResty 等）站点根指向 `public/` 目录，PHP 8.0+（FPM）。
 
-~~~
-http://localhost:8000
-~~~
+4. 前端为原生 ESM 免构建，静态资源在 `public/assets`、第三方库在 `public/static`。修改前端代码后执行以下命令刷新缓存版本号（cache-bust）：
 
-如果需要更新框架使用
-~~~
-composer update topthink/framework
-~~~
+   ```
+   php think assets:version
+   ```
 
-## 命名规范
+## 目录约定
 
-`ThinkPHP`遵循PSR-2命名规范和PSR-4自动加载规范。
-
-## 参与开发
-
-直接提交PR或者Issue即可
+- `app/controller`：HTTP 入口，按模块分目录
+- `app/service`：业务逻辑，`service/aws` 为 AWS SDK 封装
+- `app/repository`：JSON 文件数据访问层
+- `app/support`：基础设施（JsonStore / AppConfig / AuthSession / ApiResponse / ErrorMessages 等）
+- `route/`：API 路由（SPA catch-all + `api` 分组，受保护端点走 `auth.required` 中间件）
+- `data/`：运行时 JSON 数据（敏感文件不入库）
 
 ## 版权信息
 
-ThinkPHP遵循Apache2开源协议发布，并提供免费使用。
-
-本项目包含的第三方源码和二进制文件之版权信息另行标注。
-
-版权所有Copyright © 2006-2024 by ThinkPHP (http://thinkphp.cn) All rights reserved。
-
-ThinkPHP® 商标和著作权所有者为上海顶想信息科技有限公司。
-
-更多细节参阅 [LICENSE.txt](LICENSE.txt)
+基于 ThinkPHP 开发，ThinkPHP 遵循 Apache2 开源协议发布。详见 [LICENSE.txt](LICENSE.txt)。
