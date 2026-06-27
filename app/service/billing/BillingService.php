@@ -7,7 +7,6 @@ namespace app\service\billing;
 use app\service\account\AccountService;
 use app\service\aws\BillingProvider;
 use app\service\concerns\AwsServiceConcern;
-use app\support\AuthSession;
 use app\support\AwsValidator;
 
 class BillingService
@@ -45,10 +44,7 @@ class BillingService
         $accountId = AwsValidator::accountId((string) $body['account_id']);
         $account = $this->accounts->requireAccount($accountId);
 
-        $userId = (string) (AuthSession::userId() ?? 0);
-
         $cacheKey = $this->buildCacheKey('aws:billing:yearly', [
-            'user_id' => $userId,
             'account_id' => $accountId,
         ]);
 
@@ -92,6 +88,6 @@ class BillingService
 
     private function billingCacheTag(string $accountId): string
     {
-        return $this->buildCacheTag('aws', 'billing', (string) (AuthSession::userId() ?? 0), $accountId);
+        return $this->buildCacheTag('aws', 'billing', $accountId);
     }
 }

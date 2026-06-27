@@ -4,7 +4,6 @@ const endpoints = {
   login: '/session',
   logout: '/session',
   me: '/session',
-  user: '/user',
 }
 
 let mePromise = null
@@ -25,10 +24,6 @@ export const authApi = {
   captchaUrl: () => `/captcha?t=${Date.now()}`,
   login: async (username, password, captcha) => {
     const response = await http.post(endpoints.login, { username, password, captcha })
-    return rememberMe(response)
-  },
-  updateUser: async (data) => {
-    const response = await http.put(endpoints.user, data)
     return rememberMe(response)
   },
   logout: async () => {

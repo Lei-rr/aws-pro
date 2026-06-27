@@ -39,17 +39,4 @@ class SessionController
 
         return ApiResponse::noContent();
     }
-
-    public function updateUser(): Response
-    {
-        $data = validate(SessionValidate::class)
-            ->scene('user')
-            ->checked(input('put.', []));
-
-        return ApiResponse::data($this->session->updateCurrentUser(
-            $data['username'],
-            $data['current_password'],
-            ($data['new_password'] ?? '') !== '' ? $data['new_password'] : null,
-        ));
-    }
 }

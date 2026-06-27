@@ -8,10 +8,8 @@ use app\event\ProviderUpdatedEvent;
 use app\exception\ApiException;
 use app\repository\AccountRepository;
 use app\repository\InstanceRepository;
-use app\support\AuthSession;
 use app\support\AwsValidator;
 use app\support\SecretMasker;
-use RuntimeException;
 
 class AccountService
 {
@@ -43,7 +41,7 @@ class AccountService
         }
 
         $account = $this->save($body, $id, false);
-        event(new ProviderUpdatedEvent($id, 'create', $this->currentUserId()));
+        event(new ProviderUpdatedEvent($id, 'create'));
 
         return $this->publicAccount($account);
     }
@@ -51,10 +49,10 @@ class AccountService
     public function update(string $id, array $body): array
     {
         $account = $this->save($body, $id, true);
-        event(new ProviderUpdatedEvent($id, 'update', $this->currentUserId()));
+        event(new ProviderUpdatedEvent($id, 'update'));
 
         if ((string) ($account['id'] ?? '') !== $id) {
-            event(new ProviderUpdatedEvent((string) $account['id'], 'update', $this->currentUserId()));
+            event(new ProviderUpdatedEvent((string) $account['id'], 'update'));
         }
 
         return $this->publicAccount($account);
@@ -68,7 +66,7 @@ class AccountService
 
         $this->accounts->saveAll(array_filter($this->accounts->all(), static fn (array $account): bool => (string) ($account['id'] ?? '') !== $id));
         $this->instances->deleteByAccount($id);
-        event(new ProviderUpdatedEvent($id, 'delete', $this->currentUserId()));
+        event(new ProviderUpdatedEvent($id, 'delete'));
     }
 
     public function requireAccount(string $id): array
@@ -137,16 +135,6 @@ class AccountService
         }
 
         return $account;
-    }
-
-    private function currentUserId(): int
-    {
-        $userId = AuthSession::userId();
-        if ($userId === null) {
-            throw new RuntimeException('Authenticated user is not available.');
-        }
-
-        return $userId;
     }
 
     private function publicAccount(array $account): array

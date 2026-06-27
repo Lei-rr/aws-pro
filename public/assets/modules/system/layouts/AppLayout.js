@@ -30,7 +30,6 @@ export default {
             if (path !== this.$route.path) this.$router.push(path);
         },
         handleUserMenu({ key }) {
-            if (key === 'user') this.$router.push(appPaths.user);
             if (key === 'accounts') this.$router.push(appPaths.accounts);
             if (key === 'logout') this.logout();
         }
@@ -50,7 +49,6 @@ export default {
                         <a-button shape="circle" title="管理" aria-label="管理">☰</a-button>
                         <template #overlay>
                             <a-menu @click="handleUserMenu">
-                                <a-menu-item key="user">个人中心</a-menu-item>
                                 <a-menu-item key="accounts">账号管理</a-menu-item>
                                 <a-menu-divider />
                                 <a-menu-item key="logout" danger>退出</a-menu-item>

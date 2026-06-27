@@ -10,10 +10,10 @@ use app\exception\ApiException;
  * 应用配置（data/config.json）
  *
  * 当前用于鉴权用户名/密码（明文，本系统单用户场景）。
- * 通过 JsonStore 读取/写入，进程内缓存，避免每次 session 校验都读盘。
+ * 通过 JsonStore 只读读取，进程内缓存，避免每次 session 校验都读盘。
  *
- * 注意：data/config.json 不会自动创建。文件缺失或凭据为空时直接禁止登录，
- * 需手动按 data/config.json.example 创建。
+ * 注意：data/config.json 不会自动创建，凭据也不可在线修改。
+ * 文件缺失或凭据为空时直接禁止登录，需手动按 data/config.json.example 创建/修改。
  */
 class AppConfig
 {
@@ -53,25 +53,6 @@ class AppConfig
         }
 
         return hash_equals($expectedUser, $username) && hash_equals($expectedPass, $password);
-    }
-
-    /**
-     * 更新鉴权凭据（明文写入 data/config.json）
-     *
-     * 仅覆盖 auth 节点，保留文件中其它键。
-     */
-    public function updateCredentials(string $username, string $password): void
-    {
-        $next = $this->store->transaction(function (array $current) use ($username, $password): array {
-            $current['auth'] = [
-                'username' => $username,
-                'password' => $password,
-            ];
-
-            return $current;
-        });
-
-        $this->cache = is_array($next['auth'] ?? null) ? $next['auth'] : [];
     }
 
     /**

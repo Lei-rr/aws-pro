@@ -7,7 +7,6 @@ namespace app\service\quota;
 use app\service\account\AccountService;
 use app\service\aws\QuotaProvider;
 use app\service\concerns\AwsServiceConcern;
-use app\support\AuthSession;
 use app\support\AwsValidator;
 
 class QuotaService
@@ -40,10 +39,7 @@ class QuotaService
         $normalized = $this->normalizeData($body);
         $account = $this->accounts->requireAccount($normalized['account_id']);
 
-        $userId = (string) (AuthSession::userId() ?? 0);
-
         $cacheKey = $this->buildCacheKey('aws:quota:vcpu', [
-            'user_id' => $userId,
             'account_id' => $normalized['account_id'],
             'region' => $normalized['region'],
         ]);
@@ -70,11 +66,11 @@ class QuotaService
 
     private function quotaAccountCacheTag(string $accountId): string
     {
-        return $this->buildCacheTag('aws', 'quota', (string) (AuthSession::userId() ?? 0), $accountId);
+        return $this->buildCacheTag('aws', 'quota', $accountId);
     }
 
     private function quotaCacheTag(string $accountId, string $region): string
     {
-        return $this->buildCacheTag('aws', 'quota', (string) (AuthSession::userId() ?? 0), $accountId, $region);
+        return $this->buildCacheTag('aws', 'quota', $accountId, $region);
     }
 }

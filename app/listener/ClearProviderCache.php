@@ -11,11 +11,11 @@ class ClearProviderCache
 {
     public function handle(ProviderUpdatedEvent $event): void
     {
-        Cache::tag('provider:' . $event->userId . ':' . $event->providerId)->clear();
-        Cache::tag('lightsail:' . $event->userId)->clear();
-        Cache::tag('lightsail:' . $event->userId . ':' . $event->providerId)->clear();
-        Cache::tag('aws:regions:' . $event->userId . ':' . $event->providerId)->clear();
-        Cache::tag('aws:billing:' . $event->userId . ':' . $event->providerId)->clear();
-        Cache::tag('aws:quota:' . $event->userId . ':' . $event->providerId)->clear();
+        Cache::tag('provider:' . $event->providerId)->clear();
+        Cache::tag('lightsail')->clear();
+        Cache::tag('lightsail:' . $event->providerId)->clear();
+        Cache::tag('aws:regions:' . $event->providerId)->clear();
+        Cache::tag('aws:billing:' . $event->providerId)->clear();
+        Cache::tag('aws:quota:' . $event->providerId)->clear();
     }
 }

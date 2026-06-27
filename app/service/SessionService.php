@@ -71,38 +71,8 @@ class SessionService
     {
         return [
             'authenticated' => AuthSession::signedIn(),
-            'user_id' => AuthSession::userId(),
             'username' => AuthSession::username(),
             'captcha_required' => AuthSession::captchaRequired(),
         ];
-    }
-
-    /**
-     * 更新当前用户资料（用户名 + 可选的新密码），明文写回 data/config.json
-     *
-     * @throws ApiException
-     */
-    public function updateCurrentUser(string $nextUsername, string $currentPassword, ?string $newPassword): array
-    {
-        $currentUsername = AuthSession::username() ?? $this->config->authUsername();
-
-        if (!$this->config->verifyCredentials($currentUsername, $currentPassword)) {
-            throw new ApiException('Invalid current password', 422, 'invalid_current_password');
-        }
-
-        $nextUsername = trim($nextUsername);
-        if ($nextUsername === '') {
-            throw new ApiException('Username is required', 422, 'field_required', ['field' => 'username']);
-        }
-
-        $nextPassword = is_string($newPassword) && $newPassword !== ''
-            ? $newPassword
-            : $this->config->authPassword();
-
-        $this->config->updateCredentials($nextUsername, $nextPassword);
-
-        AuthSession::signIn($nextUsername);
-
-        return $this->currentSession();
     }
 }

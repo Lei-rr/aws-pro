@@ -9,7 +9,6 @@ class ProviderUpdatedEvent
     public function __construct(
         public readonly string $providerId,
         public readonly string $action,
-        public readonly int $userId,
     ) {
     }
 }

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace app\service\concerns;
 
-use app\support\AuthSession;
 use think\facade\Cache;
 
 /**
@@ -32,7 +31,7 @@ trait AwsServiceConcern
 
     protected function providerCacheTag(string $accountId): string
     {
-        return $this->buildCacheTag('provider', (string) (AuthSession::userId() ?? 0), $accountId);
+        return $this->buildCacheTag('provider', $accountId);
     }
 
     protected function getCached(string $cacheKey, bool $refresh): ?array

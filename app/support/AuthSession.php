@@ -19,11 +19,6 @@ class AuthSession
     public const USERNAME_KEY = 'auth.username';
     public const CAPTCHA_REQUIRED_KEY = 'auth.captcha_required';
 
-    /**
-     * 单用户场景下的固定用户标识，用于缓存命名空间。
-     */
-    private const SINGLE_USER_ID = 1;
-
     public static function signedIn(): bool
     {
         return session(self::SESSION_KEY) === true;
@@ -41,14 +36,6 @@ class AuthSession
     {
         session(self::SESSION_KEY, null);
         session(self::USERNAME_KEY, null);
-    }
-
-    /**
-     * 单用户场景：登录后返回固定 ID，用于缓存标签命名空间；未登录返回 null。
-     */
-    public static function userId(): ?int
-    {
-        return self::signedIn() ? self::SINGLE_USER_ID : null;
     }
 
     public static function username(): ?string

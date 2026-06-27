@@ -9,7 +9,6 @@ use app\repository\AppConfigRepository;
 use app\service\account\AccountService;
 use app\service\aws\RegionProvider;
 use app\service\concerns\AwsServiceConcern;
-use app\support\AuthSession;
 use app\support\AwsValidator;
 
 class RegionService
@@ -57,10 +56,7 @@ class RegionService
         $account = $this->accounts->requireAccount($accountId);
         $configured = $this->configuredRegions();
 
-        $userId = (string) (AuthSession::userId() ?? 0);
-
         $cacheKey = $this->buildCacheKey('aws:regions', [
-            'user_id' => $userId,
             'account_id' => $accountId,
         ]);
 
@@ -108,6 +104,6 @@ class RegionService
 
     private function regionCacheTag(string $accountId): string
     {
-        return $this->buildCacheTag('aws', 'regions', (string) (AuthSession::userId() ?? 0), $accountId);
+        return $this->buildCacheTag('aws', 'regions', $accountId);
     }
 }

@@ -8,7 +8,6 @@ use app\exception\ApiException;
 use app\repository\InstanceRepository;
 use app\service\aws\LightsailProvider;
 use app\service\concerns\AwsServiceConcern;
-use app\support\AuthSession;
 use app\support\AwsValidator;
 
 class LightsailService
@@ -86,10 +85,8 @@ class LightsailService
     public function listCached(mixed $accountId = null, mixed $region = null): array
     {
         $filters = $this->normalizeListFilters(['account_id' => $accountId, 'region' => $region]);
-        $userId = (string) (AuthSession::userId() ?? 0);
 
         $cacheKey = $this->buildCacheKey('lightsail.list', [
-            'user_id' => $userId,
             'account_id' => (string) ($filters['account_id'] ?? ''),
             'region' => (string) ($filters['region'] ?? ''),
         ]);
@@ -187,12 +184,12 @@ class LightsailService
 
     private function lightsailCacheTag(): string
     {
-        return $this->buildCacheTag('lightsail', (string) (AuthSession::userId() ?? 0));
+        return $this->buildCacheTag('lightsail');
     }
 
     private function lightsailAccountCacheTag(string $accountId): string
     {
-        return $this->buildCacheTag('lightsail', (string) (AuthSession::userId() ?? 0), $accountId);
+        return $this->buildCacheTag('lightsail', $accountId);
     }
 
     private function lightsailCacheTags(?string $accountId): array

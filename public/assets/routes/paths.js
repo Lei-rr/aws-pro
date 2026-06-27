@@ -1,7 +1,6 @@
 export const appPaths = {
     home: '/',
     login: '/login',
-    user: '/user',
     accounts: '/accounts',
     lightsail: '/lightsail',
     regions: '/regions',

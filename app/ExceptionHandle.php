@@ -3,6 +3,7 @@ namespace app;
 
 use app\exception\ApiException;
 use app\support\ApiResponse;
+use app\support\ErrorMessages;
 use think\db\exception\DataNotFoundException;
 use think\db\exception\ModelNotFoundException;
 use think\exception\Handle;
@@ -14,6 +15,10 @@ use Throwable;
 
 /**
  * 应用异常处理类
+ *
+ * 仅对 api/ 路径的异常作 JSON 响应,其他交给框架默认渲染(SPA HTML / 错误页)。
+ *
+ * message 优先取 ErrorMessages 中的中文文案,找不到时回退到原始英文 message。
  */
 class ExceptionHandle extends Handle
 {
@@ -29,49 +34,55 @@ class ExceptionHandle extends Handle
         ValidateException::class,
     ];
 
-    /**
-     * 记录异常信息（包括日志或者其它方式记录）
-     *
-     * @access public
-     * @param  Throwable $exception
-     * @return void
-     */
     public function report(Throwable $exception): void
     {
-        // 使用内置的方式记录异常日志
         parent::report($exception);
     }
 
-    /**
-     * Render an exception into an HTTP response.
-     *
-     * @access public
-     * @param \think\Request   $request
-     * @param Throwable $e
-     * @return Response
-     */
     public function render($request, Throwable $e): Response
     {
         if (str_starts_with($request->pathinfo(), 'api/')) {
-            if ($e instanceof ApiException) {
-                return ApiResponse::error($e->getMessage(), $e->getStatus(), $e->getErrorCode(), $e->getDetails());
-            }
-
-            if ($e instanceof ValidateException) {
-                return ApiResponse::error('Validation failed', 422, 'validation_failed', ['errors' => $e->getError()]);
-            }
-
-            if ($e instanceof HttpException) {
-                return ApiResponse::error($e->getMessage(), $e->getStatusCode(), 'http_error');
-            }
-
-            return ApiResponse::error('Internal server error', 500, 'server_error', app()->isDebug() ? [
-                'exception' => $e::class,
-                'message' => $e->getMessage(),
-            ] : []);
+            return $this->renderApi($e);
         }
 
-        // 其他错误交给系统处理
         return parent::render($request, $e);
+    }
+
+    private function renderApi(Throwable $e): Response
+    {
+        if ($e instanceof ApiException) {
+            $code = $e->getErrorCode();
+            $message = ErrorMessages::translate($code) ?? $e->getMessage();
+
+            return ApiResponse::error($message, $e->getStatus(), $code, $e->getDetails());
+        }
+
+        if ($e instanceof ValidateException) {
+            // Validate 自身的 message 已经是中文(取自 $field 标签 + 内置中文模板)
+            return ApiResponse::error(
+                ErrorMessages::translate('validation_failed') ?? 'Validation failed',
+                422,
+                'validation_failed',
+                ['errors' => $e->getError()],
+            );
+        }
+
+        if ($e instanceof HttpException) {
+            return ApiResponse::error(
+                ErrorMessages::translate('http_error') ?? $e->getMessage(),
+                $e->getStatusCode(),
+                'http_error',
+            );
+        }
+
+        return ApiResponse::error(
+            ErrorMessages::translate('server_error') ?? 'Internal server error',
+            500,
+            'server_error',
+            app()->isDebug() ? [
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+            ] : [],
+        );
     }
 }

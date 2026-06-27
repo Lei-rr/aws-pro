@@ -17,6 +17,9 @@ use app\support\JsonStore;
  *
  * all() 返回 regions / blueprints 两个键，
  * 兼容调用方（ConfigController / RegionService 通过 get('regions') 等访问）。
+ *
+ * 只读：regions / blueprints 为预置配置，直接手动维护 data/app-config.json，
+ * 应用内不提供写接口。
  */
 class AppConfigRepository
 {
@@ -43,32 +46,5 @@ class AppConfigRepository
     public function get(string $key, mixed $default = null): mixed
     {
         return $this->all()[$key] ?? $default;
-    }
-
-    public function save(array $data): void
-    {
-        $regions = $data['regions'] ?? [];
-        $blueprints = $data['blueprints'] ?? [];
-
-        $this->store->transaction(static function (array $current) use ($regions, $blueprints): array {
-            $current['regions'] = self::normalizeMap($regions);
-            $current['blueprints'] = self::normalizeMap($blueprints);
-
-            return $current;
-        });
-    }
-
-    private static function normalizeMap(mixed $items): array
-    {
-        if (!is_array($items)) {
-            return [];
-        }
-
-        $map = [];
-        foreach ($items as $key => $value) {
-            $map[(string) $key] = (string) $value;
-        }
-
-        return $map;
     }
 }

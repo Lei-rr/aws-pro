@@ -14,6 +14,7 @@ use app\controller\Index;
 use app\controller\system\ConfigController;
 use app\controller\system\HealthController;
 use app\support\ApiResponse;
+use app\support\ErrorMessages;
 
 Route::get('/', [Index::class, 'index']);
 Route::get('login', [Index::class, 'index']);
@@ -33,7 +34,6 @@ Route::group('api', function () {
     Route::delete('session', [SessionController::class, 'delete']);
 
     Route::group(function () {
-        Route::put('user', [SessionController::class, 'updateUser']);
         Route::get('config', [ConfigController::class, 'index']);
 
         require __DIR__ . '/api/account.php';
@@ -43,5 +43,9 @@ Route::group('api', function () {
         require __DIR__ . '/api/billing.php';
     })->middleware('auth.required');
 
-    Route::miss(fn () => ApiResponse::error('API endpoint not found', 404, 'not_found'));
+    Route::miss(fn () => ApiResponse::error(
+        ErrorMessages::translate('not_found') ?? 'API endpoint not found',
+        404,
+        'not_found',
+    ));
 });
