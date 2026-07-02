@@ -5,13 +5,13 @@ declare(strict_types=1);
 namespace app\controller\system;
 
 use app\exception\ApiException;
-use app\repository\AppConfigRepository;
+use app\repository\AwsConfigRepository;
 use app\support\ApiResponse;
 use think\Response;
 
 class ConfigController
 {
-    public function __construct(private readonly AppConfigRepository $config)
+    public function __construct(private readonly AwsConfigRepository $config)
     {
     }
 

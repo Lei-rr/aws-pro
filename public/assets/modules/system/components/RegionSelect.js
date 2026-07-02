@@ -1,5 +1,6 @@
 import { loadConfig, useConfigStore } from '../store/config.js';
 import { message } from '../../../shared/plugins/antDesignVue.js';
+import { errorMessage } from '../../../shared/utils/errors.js';
 
 export default {
     name: 'RegionSelect',
@@ -25,7 +26,7 @@ export default {
             }
         } catch (e) {
             this.$emit('loaded', this.regions);
-            message.error(e.message || '加载区域失败');
+            message.error(errorMessage(e, '加载区域失败'));
         }
     },
     template: `

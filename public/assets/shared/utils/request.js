@@ -21,22 +21,4 @@ http.interceptors.response.use(
   }
 )
 
-export function withRefresh(options = {}) {
-  // Accept only { params, refresh }; axios config should be passed separately.
-  const { refresh, params = {} } = options
-  const queryParams = { ...params }
-
-  for (const [key, value] of Object.entries(queryParams)) {
-    if (key === 'refresh' || value === undefined || value === null || value === '') delete queryParams[key]
-  }
-
-  return { params: refresh ? { ...queryParams, refresh: 1 } : queryParams }
-}
-
-export function unwrapItems(response) {
-  if (Array.isArray(response?.data)) return { ...response, data: response.data }
-  if (Array.isArray(response?.data?.items)) return { ...response, data: response.data.items, meta: response.data }
-  return response
-}
-
 export default http

@@ -1,5 +1,6 @@
 import { loadAccounts, useAccountStore } from '../store.js';
 import { message } from '../../../shared/plugins/antDesignVue.js';
+import { errorMessage } from '../../../shared/utils/errors.js';
 
 export default {
     name: 'AccountSelect',
@@ -34,7 +35,7 @@ export default {
                 }
             } catch (e) {
                 this.$emit('loaded', this.accounts);
-                message.error(e.message || '加载账号失败');
+                message.error(errorMessage(e, '加载账号失败'));
             } finally {
                 this.loading = false;
             }

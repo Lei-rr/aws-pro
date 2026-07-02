@@ -15,7 +15,6 @@ class AuthRequiredMiddleware
     public function handle(Request $request, Closure $next): Response
     {
         if (!AuthSession::signedIn()) {
-            AuthSession::signOut();
             throw new ApiException('Authentication required', 401, 'unauthenticated');
         }
 

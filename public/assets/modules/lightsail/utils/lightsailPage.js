@@ -2,6 +2,7 @@ import { configApi } from '../../system/api/config.js';
 import { lightsailApi } from '../api.js';
 import { regionName } from '../../../shared/utils/format.js';
 import { copyText } from '../../../shared/utils/clipboard.js';
+import { errorMessage } from '../../../shared/utils/errors.js';
 import { message, modal } from '../../../shared/plugins/antDesignVue.js';
 
 export function lightsailState() {
@@ -60,7 +61,7 @@ export const lightsailMethods = {
         } catch (e) {
             this.regions = {};
             this.blueprints = {};
-            message.error(e.message || '加载配置失败');
+            message.error(errorMessage(e, '加载配置失败'));
         }
     },
     async loadInstances() {
@@ -70,7 +71,7 @@ export const lightsailMethods = {
             this.instances = response.data;
         } catch (e) {
             this.instances = [];
-            message.error(e.message || '加载实例失败');
+            message.error(errorMessage(e, '加载实例失败'));
         } finally {
             this.loading = false;
         }
@@ -93,7 +94,7 @@ export const lightsailMethods = {
             window.dispatchEvent(new CustomEvent('instances-updated'));
             await this.loadInstances();
         } catch (e) {
-            message.error(e.message || '同步失败');
+            message.error(errorMessage(e, '同步失败'));
         } finally {
             this.syncing = false;
         }
@@ -122,7 +123,7 @@ export const lightsailMethods = {
             this.createForm.zone = this.createOptions.zones[0] || '';
             this.createForm.bundle = Object.keys(this.createOptions.bundles || {})[0] || '';
         } catch (e) {
-            message.error(e.message || '加载配置失败');
+            message.error(errorMessage(e, '加载配置失败'));
         } finally {
             this.configLoading = false;
         }
@@ -147,7 +148,7 @@ export const lightsailMethods = {
             window.dispatchEvent(new CustomEvent('instances-updated'));
             await this.loadInstances();
         } catch (e) {
-            message.error(e.message || '创建失败');
+            message.error(errorMessage(e, '创建失败'));
         } finally {
             this.creating = false;
         }
@@ -219,7 +220,7 @@ export const lightsailMethods = {
             window.dispatchEvent(new CustomEvent('instances-updated'));
             await this.loadInstances();
         } catch (e) {
-            message.error(e.message || '操作失败');
+            message.error(errorMessage(e, '操作失败'));
         } finally {
             this.actionLoadingKey = '';
         }
@@ -256,7 +257,7 @@ export const lightsailMethods = {
             this.remarkVisible = false;
             message.success('备注已保存');
         } catch (e) {
-            message.error(e.message || '备注保存失败');
+            message.error(errorMessage(e, '备注保存失败'));
         } finally {
             this.remarkSaving = false;
         }

@@ -1,4 +1,4 @@
-import http, { withRefresh } from '../../api/http.js';
+import http from '../../shared/utils/request.js';
 
 export const regionsApi = {
     list(accountId, options = {}) {

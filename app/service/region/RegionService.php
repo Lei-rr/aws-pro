@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace app\service\region;
 
 use app\exception\ApiException;
-use app\repository\AppConfigRepository;
+use app\repository\AwsConfigRepository;
 use app\service\account\AccountService;
 use app\service\aws\RegionProvider;
 use app\service\concerns\AwsServiceConcern;
@@ -18,7 +18,7 @@ class RegionService
     public function __construct(
         private readonly RegionProvider $provider,
         private readonly AccountService $accounts,
-        private readonly AppConfigRepository $config,
+        private readonly AwsConfigRepository $config,
     ) {
     }
 

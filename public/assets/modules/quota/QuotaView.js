@@ -2,6 +2,7 @@ import AccountSelect from '../accounts/components/AccountSelect.js';
 import RegionSelect from '../system/components/RegionSelect.js';
 import { quotaApi } from './api.js';
 import { regionName } from '../../shared/utils/format.js';
+import { errorMessage } from '../../shared/utils/errors.js';
 import { message } from '../../shared/plugins/antDesignVue.js';
 import { tablePagination } from '../../shared/utils/pagination.js';
 
@@ -84,7 +85,7 @@ export default {
                 );
                 this.items = response.data;
             } catch (e) {
-                message.error(e.message || '查询失败');
+                message.error(errorMessage(e, '查询失败'));
             } finally {
                 this.loading = false;
             }

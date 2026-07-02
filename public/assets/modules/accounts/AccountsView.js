@@ -1,6 +1,7 @@
 import { accountApi } from './api.js';
 import { message, modal } from '../../shared/plugins/antDesignVue.js';
 import TableActions from '../../shared/components/TableActions.js';
+import { errorMessage } from '../../shared/utils/errors.js';
 import { tablePagination } from '../../shared/utils/pagination.js';
 
 export default {
@@ -31,7 +32,7 @@ export default {
             return '账号列表';
         },
         pageHelp() {
-            return '用于 AWS SDK 请求的访问密钥，保存到本地 SQLite。';
+            return '用于 AWS SDK 请求的访问密钥，保存到本地 JSON。';
         },
         filteredAccounts() {
             const keyword = this.keyword.trim().toLowerCase();
@@ -53,7 +54,7 @@ export default {
                 this.accounts = response.data;
             } catch (e) {
                 this.accounts = [];
-                message.error(e.message || '加载账号失败');
+                message.error(errorMessage(e, '加载账号失败'));
             } finally {
                 this.loading = false;
             }
@@ -87,7 +88,7 @@ export default {
                 window.dispatchEvent(new CustomEvent('accounts-updated'));
                 await this.load();
             } catch (e) {
-                message.error(e.message || '账号保存失败');
+                message.error(errorMessage(e, '账号保存失败'));
             } finally {
                 this.saving = false;
             }
@@ -106,7 +107,7 @@ export default {
                         window.dispatchEvent(new CustomEvent('accounts-updated'));
                         await this.load();
                     } catch (e) {
-                        message.error(e.message || '账号删除失败');
+                        message.error(errorMessage(e, '账号删除失败'));
                     }
                 }
             });

@@ -59,6 +59,7 @@ class QuotaService
             $this->providerCacheTag($normalized['account_id']),
             $this->quotaAccountCacheTag($normalized['account_id']),
             $this->quotaCacheTag($normalized['account_id'], $normalized['region']),
+            $this->quotaWildcardCacheTag($normalized['account_id']),
         ]);
 
         return $result;
@@ -72,5 +73,10 @@ class QuotaService
     private function quotaCacheTag(string $accountId, string $region): string
     {
         return $this->buildCacheTag('aws', 'quota', $accountId, $region);
+    }
+
+    private function quotaWildcardCacheTag(string $accountId): string
+    {
+        return $this->wildcardCacheTag('aws', 'quota', $accountId);
     }
 }

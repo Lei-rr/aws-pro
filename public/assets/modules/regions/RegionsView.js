@@ -3,6 +3,7 @@ import { loadConfig, useConfigStore } from '../system/store/config.js';
 import { regionsApi } from './api.js';
 import { message, modal } from '../../shared/plugins/antDesignVue.js';
 import { regionName } from '../../shared/utils/format.js';
+import { errorMessage } from '../../shared/utils/errors.js';
 import { tablePagination } from '../../shared/utils/pagination.js';
 
 const STATUS_META = {
@@ -60,7 +61,7 @@ export default {
                 await loadConfig();
                 this.configuredRegions = this.configStore.config?.regions || {};
             } catch (error) {
-                message.error(error.message || '加载区域配置失败');
+                message.error(errorMessage(error, '加载区域配置失败'));
             }
         },
         regionLabel(id) {
@@ -101,7 +102,7 @@ export default {
                 const response = await regionsApi.list(this.accountId, { refresh });
                 this.items = response.data || [];
             } catch (error) {
-                message.error(error.message || '查询区域失败');
+                message.error(errorMessage(error, '查询区域失败'));
             } finally {
                 this.loading = false;
             }
@@ -119,7 +120,7 @@ export default {
                         message.success('已提交启用请求');
                         await this.query(true);
                     } catch (error) {
-                        message.error(error.message || '启用区域失败');
+                        message.error(errorMessage(error, '启用区域失败'));
                     } finally {
                         this.enabling = '';
                     }

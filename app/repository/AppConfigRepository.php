@@ -7,19 +7,9 @@ namespace app\repository;
 use app\support\JsonStore;
 
 /**
- * 应用设置数据访问层
+ * 应用配置仓储
  *
- * 单一存储后端：data/app-config.json，结构：
- *   {
- *     "regions":   { "<region>": "<name>", ... }, // 有序映射
- *     "blueprints":{ "<blueprint>": "<name>", ... }
- *   }
- *
- * all() 返回 regions / blueprints 两个键，
- * 兼容调用方（ConfigController / RegionService 通过 get('regions') 等访问）。
- *
- * 只读：regions / blueprints 为预置配置，直接手动维护 data/app-config.json，
- * 应用内不提供写接口。
+ * 统一 data/config.json 的本地持久化访问边界。
  */
 class AppConfigRepository
 {
@@ -27,24 +17,13 @@ class AppConfigRepository
 
     public function __construct(?JsonStore $store = null)
     {
-        $this->store = $store ?? new JsonStore('app-config.json', [
-            'regions' => [],
-            'blueprints' => [],
+        $this->store = $store ?? new JsonStore('config.json', [
+            'auth' => ['username' => '', 'password' => ''],
         ]);
     }
 
-    public function all(): array
+    public function read(): array
     {
-        $data = $this->store->read();
-
-        return [
-            'regions' => is_array($data['regions'] ?? null) ? $data['regions'] : [],
-            'blueprints' => is_array($data['blueprints'] ?? null) ? $data['blueprints'] : [],
-        ];
-    }
-
-    public function get(string $key, mixed $default = null): mixed
-    {
-        return $this->all()[$key] ?? $default;
+        return $this->store->read();
     }
 }

@@ -1,4 +1,5 @@
 import { regionName } from '../../../shared/utils/format.js';
+import { errorMessage } from '../../../shared/utils/errors.js';
 import { message } from '../../../shared/plugins/antDesignVue.js';
 import { loadAccounts, useAccountStore } from '../../accounts/store.js';
 import { loadConfig, useConfigStore } from '../store/config.js';
@@ -92,7 +93,7 @@ export default {
                     loadConfig({ refresh: true })
                 ]);
             } catch (e) {
-                message.error(e.message || '加载控制台数据失败');
+                message.error(errorMessage(e, '加载控制台数据失败'));
             } finally {
                 this.loading = false;
             }

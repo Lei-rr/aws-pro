@@ -9,10 +9,10 @@ use app\support\AppConfig;
 use app\support\AuthSession;
 
 /**
- * 用户会话服务
+ * 鉴权会话服务
  *
  * 凭据来源：data/config.json 的 auth.username / auth.password（明文）。
- * 单用户场景，无需注册；支持在线修改用户名/密码（写回 config.json）。
+ * 单用户场景，无需注册/改密。
  *
  * 登录失败一次后强制要求验证码，验证失败/未带都会保持 captcha_required 直到登录成功。
  */
@@ -22,25 +22,10 @@ class SessionService
     {
     }
 
-    /**
-     * 用户登录
-     *
-     * @throws ApiException
-     */
     public function login(string $username, string $password, ?string $captcha = null): array
     {
         if (AuthSession::captchaRequired()) {
-            if ($captcha === null || $captcha === '') {
-                throw new ApiException('Captcha required', 422, 'captcha_required', [
-                    'captcha_required' => true,
-                ]);
-            }
-
-            if (!captcha_check($captcha)) {
-                throw new ApiException('Invalid captcha', 422, 'invalid_captcha', [
-                    'captcha_required' => true,
-                ]);
-            }
+            $this->verifyCaptcha($captcha);
         }
 
         if (!$this->config->verifyCredentials($username, $password)) {
@@ -56,17 +41,11 @@ class SessionService
         return $this->currentSession();
     }
 
-    /**
-     * 登出
-     */
     public function logout(): void
     {
         AuthSession::signOut();
     }
 
-    /**
-     * 获取当前会话状态
-     */
     public function currentSession(): array
     {
         return [
@@ -74,5 +53,20 @@ class SessionService
             'username' => AuthSession::username(),
             'captcha_required' => AuthSession::captchaRequired(),
         ];
+    }
+
+    private function verifyCaptcha(?string $captcha): void
+    {
+        if ($captcha === null || $captcha === '') {
+            throw new ApiException('Captcha required', 422, 'captcha_required', [
+                'captcha_required' => true,
+            ]);
+        }
+
+        if (!captcha_check($captcha)) {
+            throw new ApiException('Invalid captcha', 422, 'invalid_captcha', [
+                'captcha_required' => true,
+            ]);
+        }
     }
 }

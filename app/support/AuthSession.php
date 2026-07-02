@@ -15,26 +15,26 @@ use think\facade\Session;
  */
 class AuthSession
 {
-    public const SESSION_KEY = 'auth.signed_in';
+    public const SIGNED_IN_KEY = 'auth.signed_in';
     public const USERNAME_KEY = 'auth.username';
     public const CAPTCHA_REQUIRED_KEY = 'auth.captcha_required';
 
     public static function signedIn(): bool
     {
-        return session(self::SESSION_KEY) === true;
+        return session(self::SIGNED_IN_KEY) === true;
     }
 
     public static function signIn(string $username): void
     {
         Session::regenerate(true);
-        session(self::SESSION_KEY, true);
+        session(self::SIGNED_IN_KEY, true);
         session(self::USERNAME_KEY, $username);
         self::clearCaptchaRequired();
     }
 
     public static function signOut(): void
     {
-        session(self::SESSION_KEY, null);
+        session(self::SIGNED_IN_KEY, null);
         session(self::USERNAME_KEY, null);
     }
 

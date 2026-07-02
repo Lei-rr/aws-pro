@@ -50,6 +50,13 @@ trait AwsServiceConcern
         Cache::tag($tag)->set($cacheKey, $data, $this->cacheTtl());
     }
 
+    protected function wildcardCacheTag(string ...$segments): string
+    {
+        $segments[] = '*';
+
+        return $this->buildCacheTag(...$segments);
+    }
+
     protected function invalidateCache(string ...$tags): void
     {
         foreach ($tags as $tag) {
