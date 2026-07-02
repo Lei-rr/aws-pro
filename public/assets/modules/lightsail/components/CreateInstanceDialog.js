@@ -22,7 +22,7 @@ export default {
                         <a-col :xs="24" :md="12"><a-form-item label="可用区" required><a-select v-model:value="form.zone" placeholder="选择可用区"><a-select-option v-for="zone in options.zones" :key="zone" :value="zone">{{ zone }}</a-select-option></a-select></a-form-item></a-col>
                         <a-col :xs="24" :md="12"><a-form-item label="系统镜像" required><a-select v-model:value="form.blueprint"><a-select-option v-for="(name, id) in blueprints" :key="id" :value="id">{{ name }}</a-select-option></a-select></a-form-item></a-col>
                         <a-col :xs="24" :md="12"><a-form-item label="root 密码"><a-input-password v-model:value="form.root_password" placeholder="可选，按后端配置执行" /></a-form-item></a-col>
-                        <a-col :xs="24" :md="12"><a-form-item label="套餐" required><a-select v-model:value="form.bundle" placeholder="选择套餐"><a-select-option v-for="(name, id) in options.bundles" :key="id" :value="id">{{ name }}</a-select-option></a-select></a-form-item></a-col>
+                        <a-col :xs="24"><a-form-item label="套餐" required><a-select v-model:value="form.bundle" placeholder="选择套餐"><a-select-option v-for="(name, id) in options.bundles" :key="id" :value="id">{{ name }}</a-select-option></a-select></a-form-item></a-col>
                     </a-row>
                     <div class="modal-form-actions-main account-form-actions">
                         <a-button @click="$emit('update:visible', false)">取消</a-button>

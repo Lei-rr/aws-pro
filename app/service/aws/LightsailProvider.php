@@ -38,11 +38,25 @@ class LightsailProvider
         return $this->call('lightsail.bundles', function () use ($account, $region): array {
             $items = [];
             foreach (($this->client($account, $region)->getBundles([])['bundles'] ?? []) as $item) {
-                $items[$item['bundleId']] = sprintf('%s | %s cpu | %sGB RAM | %sGB disk | %sTB transfer | $%s/month', $item['name'] ?? $item['bundleId'], $item['cpuCount'] ?? '-', $item['ramSizeInGb'] ?? '-', $item['diskSizeInGb'] ?? '-', !empty($item['transferPerMonthInGb']) ? round($item['transferPerMonthInGb'] / 1024, 2) : '-', $item['price'] ?? '-');
+                $bundleId = (string) ($item['bundleId'] ?? '');
+                if ($bundleId !== '') {
+                    $items[$bundleId] = sprintf('%s | %s cpu | %sGB RAM | %sGB disk | %sTB transfer | $%s/month', $item['name'] ?? $bundleId, $item['cpuCount'] ?? '-', $item['ramSizeInGb'] ?? '-', $item['diskSizeInGb'] ?? '-', !empty($item['transferPerMonthInGb']) ? round($item['transferPerMonthInGb'] / 1024, 2) : '-', $item['price'] ?? '-');
+                }
             }
 
             return $items;
         });
+    }
+
+    private function bundleSpecs(array $bundle): array
+    {
+        return [
+            'cpu' => isset($bundle['cpuCount']) ? (int) $bundle['cpuCount'] : null,
+            'memory' => isset($bundle['ramSizeInGb']) ? (float) $bundle['ramSizeInGb'] : null,
+            'disk' => isset($bundle['diskSizeInGb']) ? (int) $bundle['diskSizeInGb'] : null,
+            'transfer' => !empty($bundle['transferPerMonthInGb']) ? ((float) $bundle['transferPerMonthInGb']) / 1024 : null,
+            'price' => isset($bundle['price']) ? (float) $bundle['price'] : null,
+        ];
     }
 
     public function createInstance(array $account, string $region, array $data): void
@@ -67,6 +81,12 @@ class LightsailProvider
         return $this->call('lightsail.instances', function () use ($account, $region): array {
             $items = [];
             $client = $this->client($account, $region);
+            $bundleSpecs = [];
+            try {
+                $bundleSpecs = $this->bundleSpecsMap($account, $region);
+            } catch (Throwable) {
+                $bundleSpecs = [];
+            }
             $staticIps = [];
             try {
                 foreach (($client->getStaticIps([])['staticIps'] ?? []) as $ip) {
@@ -80,6 +100,7 @@ class LightsailProvider
 
             foreach (($client->getInstances([])['instances'] ?? []) as $item) {
                 $name = $item['name'] ?? '';
+                $bundleId = (string) ($item['bundleId'] ?? '');
                 $items[] = [
                     'account_id' => $account['id'],
                     'region' => $region,
@@ -89,7 +110,8 @@ class LightsailProvider
                     'static_ip' => $staticIps[$name] ?? '',
                     'ipv6' => $item['ipv6Addresses'][0] ?? '',
                     'zone' => $item['location']['availabilityZone'] ?? '',
-                    'bundle_id' => $item['bundleId'] ?? '',
+                    'bundle_id' => $bundleId,
+                    'bundle_specs' => $bundleSpecs[$bundleId] ?? [],
                 ];
             }
 
@@ -152,6 +174,19 @@ class LightsailProvider
     private function client(array $account, string $region): LightsailClient
     {
         return $this->clients->lightsail($account, $region);
+    }
+
+    private function bundleSpecsMap(array $account, string $region): array
+    {
+        $items = [];
+        foreach (($this->client($account, $region)->getBundles([])['bundles'] ?? []) as $item) {
+            $bundleId = (string) ($item['bundleId'] ?? '');
+            if ($bundleId !== '') {
+                $items[$bundleId] = $this->bundleSpecs($item);
+            }
+        }
+
+        return $items;
     }
 
     private function attachedStaticIpName(mixed $client, string $instanceName): string

@@ -26,7 +26,7 @@ class InstanceRepository
         $data = $this->store->read();
         $items = is_array($data['items'] ?? null) ? $data['items'] : [];
 
-        return array_map(static fn (array $row): array => [
+        return array_map(fn (array $row): array => [
             'account_id' => (string) ($row['account_id'] ?? ''),
             'region' => (string) ($row['region'] ?? ''),
             'name' => (string) ($row['name'] ?? ''),
@@ -36,6 +36,7 @@ class InstanceRepository
             'ipv6' => (string) ($row['ipv6'] ?? ''),
             'zone' => (string) ($row['zone'] ?? ''),
             'bundle_id' => (string) ($row['bundle_id'] ?? ''),
+            'bundle_specs' => $this->bundleSpecs($row['bundle_specs'] ?? []),
             'remark' => (string) ($row['remark'] ?? ''),
         ], array_values($items));
     }
@@ -99,6 +100,7 @@ class InstanceRepository
                 'ipv6' => (string) ($instance['ipv6'] ?? ''),
                 'zone' => (string) ($instance['zone'] ?? ''),
                 'bundle_id' => (string) ($instance['bundle_id'] ?? ''),
+                'bundle_specs' => $this->bundleSpecs($instance['bundle_specs'] ?? []),
                 'remark' => (string) ($instance['remark'] ?? ''),
                 'sort_order' => $index,
                 'created_at' => (int) ($instance['created_at'] ?? $now),
@@ -111,5 +113,20 @@ class InstanceRepository
 
             return $current;
         });
+    }
+
+    private function bundleSpecs(mixed $specs): array
+    {
+        if (!is_array($specs)) {
+            return [];
+        }
+
+        return [
+            'cpu' => isset($specs['cpu']) ? (int) $specs['cpu'] : null,
+            'memory' => isset($specs['memory']) ? (float) $specs['memory'] : null,
+            'disk' => isset($specs['disk']) ? (int) $specs['disk'] : null,
+            'transfer' => isset($specs['transfer']) ? (float) $specs['transfer'] : null,
+            'price' => isset($specs['price']) ? (float) $specs['price'] : null,
+        ];
     }
 }

@@ -43,9 +43,9 @@ export default {
                     title: '套餐',
                     dataIndex: 'bundle_id',
                     key: 'bundle_id',
-                    width: 150,
+                    width: 170,
                     responsive: ['lg'],
-                    filters: this.bundleOptions.map((bundle) => ({ text: bundle, value: bundle })),
+                    filters: this.bundleOptions.map((bundle) => ({ text: this.bundleFilterLabel(bundle), value: bundle })),
                     onFilter: (value, record) => record.bundle_id === value
                 },
                 {
@@ -75,6 +75,30 @@ export default {
         },
         regionLabel(id) {
             return regionName(this.regions, id);
+        },
+        bundleLabel(row) {
+            const parts = this.bundleParts(row);
+
+            return parts.length ? parts.join(' ') : (row.bundle_id || '-');
+        },
+        bundleParts(row) {
+            const specs = row.bundle_specs || {};
+            const parts = [];
+            if (specs.cpu) parts.push(`${this.formatNumber(specs.cpu)}C`);
+            if (specs.memory) parts.push(`${this.formatNumber(specs.memory)}G`);
+            if (specs.disk) parts.push(`${this.formatNumber(specs.disk)}G`);
+            if (specs.transfer) parts.push(`${this.formatNumber(specs.transfer)}T`);
+
+            return parts.length ? parts : [row.bundle_id || '-'];
+        },
+        bundleFilterLabel(id) {
+            const matched = this.instances.find((row) => row.bundle_id === id && row.bundle_specs);
+
+            return matched ? this.bundleLabel(matched) : (id || '-');
+        },
+        formatNumber(value) {
+            const number = Number(value || 0);
+            return Number.isInteger(number) ? String(number) : String(Number(number.toFixed(2)));
         },
         stateLabel(state) {
             const labels = {
@@ -122,6 +146,9 @@ export default {
                     </template>
                     <template v-else-if="column.key === 'state'">
                         <a-tag :color="record.state === 'running' ? 'success' : 'warning'">{{ stateLabel(record.state) }}</a-tag>
+                    </template>
+                    <template v-else-if="column.key === 'bundle_id'">
+                        {{ bundleParts(record).join('丨') }}
                     </template>
                     <template v-else-if="column.key === 'static_ip'">
                         <a-space size="small">
