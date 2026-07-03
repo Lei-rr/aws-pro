@@ -23,6 +23,8 @@ export default {
             enabling: '',
             accountId: '',
             configuredRegions: {},
+            meta: { cached: false },
+            loadRequestToken: 0,
             items: [],
             columns: [
                 { title: '区域', dataIndex: 'region', key: 'region', width: 220 },
@@ -50,6 +52,7 @@ export default {
     watch: {
         accountId() {
             this.items = [];
+            this.meta = { cached: false };
             if (this.accountId) {
                 this.loadFromCache();
             }
@@ -83,10 +86,16 @@ export default {
             if (!this.accountId) {
                 return;
             }
+            const token = ++this.loadRequestToken;
             try {
                 const response = await regionsApi.list(this.accountId, { cache_only: true });
-                if (response.data && response.data.length > 0) {
-                    this.items = response.data;
+                if (token !== this.loadRequestToken) return;
+                const items = response.data.items || response.data || [];
+                if (items.length > 0) {
+                    this.items = items;
+                    this.meta = response.data.meta || { cached: true };
+                } else {
+                    this.meta = { cached: false };
                 }
             } catch (error) {
                 // 缓存读取失败静默处理
@@ -98,13 +107,17 @@ export default {
             }
 
             this.loading = true;
+            const token = ++this.loadRequestToken;
             try {
                 const response = await regionsApi.list(this.accountId, { refresh });
-                this.items = response.data || [];
+                if (token !== this.loadRequestToken) return;
+                this.items = response.data.items || response.data || [];
+                this.meta = response.data.meta || { cached: false };
             } catch (error) {
+                if (token !== this.loadRequestToken) return;
                 message.error(errorMessage(error, '查询区域失败'));
             } finally {
-                this.loading = false;
+                if (token === this.loadRequestToken) this.loading = false;
             }
         },
         enableRegion(row) {

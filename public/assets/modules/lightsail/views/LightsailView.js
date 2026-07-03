@@ -25,6 +25,7 @@ export default {
             <instance-list
                 :loading="loading"
                 :instances="instances"
+                :meta="instancesMeta"
                 :regions="regions"
                 :account-options="accountOptions"
                 :bundle-options="bundleOptions"

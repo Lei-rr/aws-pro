@@ -9,6 +9,7 @@ export default {
     props: {
         loading: { type: Boolean, default: false },
         instances: { type: Array, default: () => [] },
+        meta: { type: Object, default: () => ({}) },
         regions: { type: Object, default: () => ({}) },
         accountOptions: { type: Array, default: () => [] },
         bundleOptions: { type: Array, default: () => [] }
@@ -92,7 +93,7 @@ export default {
             return parts.length ? parts : [row.bundle_id || '-'];
         },
         bundleFilterLabel(id) {
-            const matched = this.instances.find((row) => row.bundle_id === id && row.bundle_specs);
+            const matched = this.instances.find((row) => row.bundle_id === id && Object.keys(row.bundle_specs || {}).length);
 
             return matched ? this.bundleLabel(matched) : (id || '-');
         },

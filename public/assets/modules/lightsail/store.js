@@ -19,7 +19,7 @@ export const useLightsailStore = defineStore('lightsail', {
                 this.error = null;
                 instancesPromise = lightsailApi.instances()
                     .then((response) => {
-                        this.instances = response.data;
+                        this.instances = response.data.items || response.data || [];
                         return this.instances;
                     })
                     .catch((error) => {

@@ -62,14 +62,17 @@ class RegionService
 
         $cached = $this->getCached($cacheKey, $refresh);
         if ($cached !== null) {
-            return array_values(array_filter(
+            return [
+                'items' => array_values(array_filter(
                 $cached,
                 static fn (array $region): bool => array_key_exists((string) ($region['region'] ?? ''), $configured)
-            ));
+                )),
+                'meta' => $this->responseMeta(true, 'cache'),
+            ];
         }
 
         if ($cacheOnly) {
-            return [];
+            return ['items' => [], 'meta' => $this->responseMeta(true, 'cache')];
         }
 
         $regions = $this->provider->regions($account);
@@ -79,10 +82,13 @@ class RegionService
             $this->regionCacheTag($accountId),
         ]);
 
-        return array_values(array_filter(
+        return [
+            'items' => array_values(array_filter(
             $regions,
             static fn (array $region): bool => array_key_exists((string) ($region['region'] ?? ''), $configured)
-        ));
+            )),
+            'meta' => $this->responseMeta(false, 'aws'),
+        ];
     }
 
     public function enable(array $body): array

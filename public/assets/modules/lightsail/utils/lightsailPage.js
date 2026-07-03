@@ -16,6 +16,9 @@ export function lightsailState() {
         regions: {},
         blueprints: {},
         instances: [],
+        instancesMeta: { cached: false },
+        loadRequestToken: 0,
+        createConfigRequestToken: 0,
         remarkVisible: false,
         remarkSaving: false,
         actionLoadingKey: '',
@@ -65,15 +68,20 @@ export const lightsailMethods = {
         }
     },
     async loadInstances() {
+        const token = ++this.loadRequestToken;
         this.loading = true;
         try {
             const response = await lightsailApi.instances();
-            this.instances = response.data;
+            if (token !== this.loadRequestToken) return;
+            this.instances = response.data.items || response.data || [];
+            this.instancesMeta = response.data.meta || { cached: false };
         } catch (e) {
+            if (token !== this.loadRequestToken) return;
             this.instances = [];
+            this.instancesMeta = { cached: false };
             message.error(errorMessage(e, '加载实例失败'));
         } finally {
-            this.loading = false;
+            if (token === this.loadRequestToken) this.loading = false;
         }
     },
     async sync() {
@@ -91,6 +99,9 @@ export const lightsailMethods = {
             const result = response.data;
             const count = typeof result.count === 'number' ? result.count : 0;
             message.success(`同步完成，共 ${count} 台实例`);
+            for (const warning of result.warnings || []) {
+                message.warning(warning.message || '同步存在部分警告');
+            }
             window.dispatchEvent(new CustomEvent('instances-updated'));
             await this.loadInstances();
         } catch (e) {
@@ -116,16 +127,19 @@ export const lightsailMethods = {
         await this.loadCreateConfig();
     },
     async loadCreateConfig() {
+        const token = ++this.createConfigRequestToken;
         this.configLoading = true;
         try {
             const response = await lightsailApi.createOptions({ account_id: this.accountId, region: this.region });
+            if (token !== this.createConfigRequestToken) return;
             this.createOptions = response.data;
             this.createForm.zone = this.createOptions.zones[0] || '';
             this.createForm.bundle = Object.keys(this.createOptions.bundles || {})[0] || '';
         } catch (e) {
+            if (token !== this.createConfigRequestToken) return;
             message.error(errorMessage(e, '加载配置失败'));
         } finally {
-            this.configLoading = false;
+            if (token === this.createConfigRequestToken) this.configLoading = false;
         }
     },
     async createInstance() {

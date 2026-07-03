@@ -15,6 +15,8 @@ export default {
             accountId: '',
             region: '',
             regions: {},
+            meta: { cached: false },
+            loadRequestToken: 0,
             items: [],
             columns: [
                 { title: '配额名称', dataIndex: 'name', key: 'name' },
@@ -38,12 +40,14 @@ export default {
     watch: {
         accountId() {
             this.items = [];
+            this.meta = { cached: false };
             if (this.accountId && this.region) {
                 this.loadFromCache();
             }
         },
         region() {
             this.items = [];
+            this.meta = { cached: false };
             if (this.accountId && this.region) {
                 this.loadFromCache();
             }
@@ -60,13 +64,19 @@ export default {
             if (!this.accountId || !this.region) {
                 return;
             }
+            const token = ++this.loadRequestToken;
             try {
                 const response = await quotaApi.vcpu(
                     { account_id: this.accountId, region: this.region },
                     { cache_only: true }
                 );
-                if (response.data && response.data.length > 0) {
-                    this.items = response.data;
+                if (token !== this.loadRequestToken) return;
+                const items = response.data.items || response.data || [];
+                if (items.length > 0) {
+                    this.items = items;
+                    this.meta = response.data.meta || { cached: true };
+                } else {
+                    this.meta = { cached: false };
                 }
             } catch (e) {
                 // 缓存读取失败静默处理
@@ -77,17 +87,21 @@ export default {
                 message.warning('请选择账号和区域');
                 return;
             }
+            const token = ++this.loadRequestToken;
             this.loading = true;
             try {
                 const response = await quotaApi.vcpu(
                     { account_id: this.accountId, region: this.region },
                     { refresh }
                 );
-                this.items = response.data;
+                if (token !== this.loadRequestToken) return;
+                this.items = response.data.items || response.data || [];
+                this.meta = response.data.meta || { cached: false };
             } catch (e) {
+                if (token !== this.loadRequestToken) return;
                 message.error(errorMessage(e, '查询失败'));
             } finally {
-                this.loading = false;
+                if (token === this.loadRequestToken) this.loading = false;
             }
         }
     },

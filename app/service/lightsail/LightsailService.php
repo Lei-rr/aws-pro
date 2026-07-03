@@ -6,9 +6,11 @@ namespace app\service\lightsail;
 
 use app\exception\ApiException;
 use app\repository\InstanceRepository;
+use app\service\aws\LightsailBundleGateway;
 use app\service\aws\LightsailProvider;
 use app\service\concerns\AwsServiceConcern;
 use app\support\AwsValidator;
+use Throwable;
 
 class LightsailService
 {
@@ -16,6 +18,7 @@ class LightsailService
 
     public function __construct(
         private readonly LightsailProvider $aws,
+        private readonly LightsailBundleGateway $bundles,
         private readonly InstanceRepository $instances,
     ) {
     }
@@ -71,7 +74,7 @@ class LightsailService
     {
         return [
             'zones' => $this->aws->availabilityZones($account, $region),
-            'bundles' => $this->aws->bundles($account, $region),
+            'bundles' => $this->bundleLabels($account, $region),
         ];
     }
 
@@ -93,19 +96,37 @@ class LightsailService
 
         $cached = $this->getCached($cacheKey, false);
         if ($cached !== null) {
-            return $cached;
+            return [
+                'items' => $cached,
+                'meta' => $this->responseMeta(true, 'cache'),
+            ];
         }
 
         $items = $this->loadAndSortInstances($filters['account_id'], $filters['region']);
         $this->setCached($cacheKey, $items, $this->lightsailCacheTags($filters['account_id']));
 
-        return $items;
+        return [
+            'items' => $items,
+            'meta' => $this->responseMeta(false, 'local'),
+        ];
     }
 
     public function sync(array $account, string $accountId, string $region): array
     {
         $remarks = $this->remarksByInstance($this->instances->all());
-        $synced = array_map(function (array $item) use ($remarks): array {
+        $warnings = [];
+        $bundleSpecs = [];
+        try {
+            $bundleSpecs = $this->bundleSpecs($account, $region);
+        } catch (Throwable $exception) {
+            $warnings[] = [
+                'code' => 'bundle_specs_unavailable',
+                'message' => '套餐规格暂未获取，实例同步已继续',
+                'details' => app()->isDebug() ? ['error' => $exception->getMessage()] : [],
+            ];
+        }
+
+        $synced = array_map(function (array $item) use ($remarks, $bundleSpecs): array {
             $key = $this->instanceKey(
                 (string) ($item['account_id'] ?? ''),
                 (string) ($item['region'] ?? ''),
@@ -114,6 +135,8 @@ class LightsailService
             if (isset($remarks[$key])) {
                 $item['remark'] = $remarks[$key];
             }
+            $bundleId = (string) ($item['bundle_id'] ?? '');
+            $item['bundle_specs'] = $bundleSpecs[$bundleId] ?? [];
 
             return $item;
         }, $this->aws->instances($account, $region));
@@ -121,7 +144,14 @@ class LightsailService
         $this->instances->replaceScope($accountId, $region, $synced);
         $this->invalidateLightsailCache($accountId);
 
-        return ['instances' => $synced, 'count' => count($synced)];
+        return [
+            'instances' => $synced,
+            'count' => count($synced),
+            'account_id' => $accountId,
+            'region' => $region,
+            'bundle_specs_loaded' => $bundleSpecs !== [],
+            'warnings' => $warnings,
+        ];
     }
 
     public function updateRemark(string $accountId, string $region, string $instanceName, string $remark): array
@@ -190,6 +220,50 @@ class LightsailService
     private function lightsailAccountCacheTag(string $accountId): string
     {
         return $this->buildCacheTag('lightsail', $accountId);
+    }
+
+    private function bundleCacheKey(string $accountId, string $region): string
+    {
+        return $this->buildCacheKey('lightsail.bundles', [
+            'account_id' => $accountId,
+            'region' => $region,
+        ]);
+    }
+
+    private function bundleCacheTag(string $accountId, ?string $region = null): string
+    {
+        return $region === null
+            ? $this->buildCacheTag('lightsail', 'bundles', $accountId)
+            : $this->buildCacheTag('lightsail', 'bundles', $accountId, $region);
+    }
+
+    private function bundles(array $account, string $region, bool $refresh = false): array
+    {
+        $accountId = (string) ($account['id'] ?? '');
+        $cacheKey = $this->bundleCacheKey($accountId, $region);
+        $cached = $this->getCached($cacheKey, $refresh);
+        if ($cached !== null) {
+            return $cached;
+        }
+
+        $bundles = $this->bundles->bundles($account, $region);
+        $this->setCached($cacheKey, $bundles, [
+            $this->bundleCacheTag($accountId),
+            $this->wildcardCacheTag('lightsail', 'bundles', $accountId),
+            $this->bundleCacheTag($accountId, $region),
+        ]);
+
+        return $bundles;
+    }
+
+    private function bundleLabels(array $account, string $region): array
+    {
+        return array_map(static fn (array $bundle): string => (string) ($bundle['label'] ?? ''), $this->bundles($account, $region));
+    }
+
+    private function bundleSpecs(array $account, string $region, bool $refresh = false): array
+    {
+        return array_map(static fn (array $bundle): array => is_array($bundle['specs'] ?? null) ? $bundle['specs'] : [], $this->bundles($account, $region, $refresh));
     }
 
     private function lightsailCacheTags(?string $accountId): array

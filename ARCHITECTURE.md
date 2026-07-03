@@ -244,3 +244,118 @@ Provider 不负责：
 5. 不为了单个功能持续膨胀某个模块
 
 如确需突破以上规则，必须先说明这是系统级调整，而不是局部便利性改动。
+
+## 12. 本地数据 Schema
+
+本项目使用 `data/` 下的 JSON 文件作为轻量本地持久化。所有读写必须经过 `repository/`。
+
+### 12.1 `data/config.json`
+
+```json
+{
+  "auth": {
+    "username": "admin",
+    "password": "change-me"
+  }
+}
+```
+
+用途：单用户登录凭据。
+
+### 12.2 `data/app-config.json`
+
+```json
+{
+  "regions": {
+    "ap-northeast-1": "东京"
+  },
+  "blueprints": {
+    "ubuntu_24_04": "Ubuntu 24.04"
+  }
+}
+```
+
+用途：区域中文名、镜像白名单等应用级只读配置。
+
+### 12.3 `data/accounts.json`
+
+```json
+{
+  "items": [
+    {
+      "id": "account-id",
+      "access_key": "AKIA...",
+      "secret_key": "...",
+      "remark": "主账号"
+    }
+  ]
+}
+```
+
+用途：AWS 账号凭据。对外返回时必须脱敏 `secret_key`。
+
+### 12.4 `data/instances.json`
+
+```json
+{
+  "items": [
+    {
+      "account_id": "account-id",
+      "region": "ap-northeast-1",
+      "name": "web-01",
+      "state": "running",
+      "public_ip": "1.2.3.4",
+      "static_ip": "1.2.3.4",
+      "ipv6": "",
+      "zone": "ap-northeast-1a",
+      "bundle_id": "medium_3_0",
+      "bundle_specs": {
+        "cpu": 2,
+        "memory": 4,
+        "disk": 80,
+        "transfer": 4,
+        "price": 24
+      },
+      "remark": "生产",
+      "sort_order": 0,
+      "created_at": 1783005976,
+      "updated_at": 1783005976
+    }
+  ]
+}
+```
+
+规则：
+
+1. `bundle_specs` 是结构化规格，不存前端展示文案。
+2. `price` 可以保存，但前端可按场景决定是否展示。
+3. 新增实例字段必须先更新 `InstanceRepository` 的读写白名单。
+
+## 13. API Meta 约定
+
+列表类接口统一在 `data.meta` 中返回数据来源信息：
+
+```json
+{
+  "data": {
+    "items": [],
+    "meta": {
+      "cached": false,
+      "source": "aws",
+      "refreshed_at": 1783005976
+    }
+  }
+}
+```
+
+字段含义：
+
+- `cached`：是否来自缓存。
+- `source`：数据来源，当前可用值包括 `aws`、`cache`、`local`。
+- `refreshed_at`：服务端生成响应的 Unix 时间戳，仅用于调试或接口消费，不作为前端缓存生成时间展示。
+
+规则：
+
+1. 缓存 payload 只保存业务数据，不把 `meta` 写入业务缓存。
+2. 前端必须容忍旧响应缺少 `meta`。
+3. 需要展示缓存状态时，统一通过共享 meta 工具格式化。

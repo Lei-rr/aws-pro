@@ -50,11 +50,11 @@ class BillingService
 
         $cached = $this->getCached($cacheKey, $refresh);
         if ($cached !== null) {
-            return $cached;
+            return $cached + ['meta' => $this->responseMeta(true, 'cache')];
         }
 
         if ($cacheOnly) {
-            return ['items' => [], 'total_cost' => 0, 'total_credit' => 0, 'unit' => 'USD'];
+            return ['items' => [], 'total_cost' => 0, 'total_credit' => 0, 'unit' => 'USD', 'meta' => $this->responseMeta(true, 'cache')];
         }
 
         $items = $this->billing->yearlyCostAndCredits($account);
@@ -66,7 +66,7 @@ class BillingService
             $this->billingCacheTag($accountId),
         ]);
 
-        return $result;
+        return $result + ['meta' => $this->responseMeta(false, 'aws')];
     }
 
     private function formatYearlySummary(array $items): array

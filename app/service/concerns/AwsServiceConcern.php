@@ -50,6 +50,15 @@ trait AwsServiceConcern
         Cache::tag($tag)->set($cacheKey, $data, $this->cacheTtl());
     }
 
+    protected function responseMeta(bool $cached, string $source): array
+    {
+        return [
+            'cached' => $cached,
+            'source' => $source,
+            'refreshed_at' => time(),
+        ];
+    }
+
     protected function wildcardCacheTag(string ...$segments): string
     {
         $segments[] = '*';

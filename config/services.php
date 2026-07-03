@@ -13,6 +13,8 @@ return [
         'lightsail',
         'lightsail:{providerId}',
         'provider:{providerId}',
+        'lightsail:bundles:{providerId}',
+        'lightsail:bundles:{providerId}:*',
         'aws:regions:{providerId}',
         'aws:billing:{providerId}',
         'aws:quota:{providerId}',

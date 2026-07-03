@@ -13,6 +13,8 @@ export default {
             accountId: '',
             bills: [],
             summary: { total_cost: 0, total_credit: 0 },
+            meta: { cached: false },
+            loadRequestToken: 0,
             columns: [
                 { title: '账号', dataIndex: 'account_id', key: 'account_id', width: 220 },
                 { title: '月份', dataIndex: 'month', key: 'month', width: 120 },
@@ -52,6 +54,7 @@ export default {
         accountId() {
             this.bills = [];
             this.summary = { total_cost: 0, total_credit: 0 };
+            this.meta = { cached: false };
             if (this.accountId) {
                 this.loadFromCache();
             }
@@ -69,15 +72,20 @@ export default {
             if (!this.accountId) {
                 return;
             }
+            const token = ++this.loadRequestToken;
             try {
                 const response = await billingApi.yearly(
                     { account_id: this.accountId },
                     { cache_only: true }
                 );
+                if (token !== this.loadRequestToken) return;
                 const billing = response.data;
                 if (billing && billing.items && billing.items.length > 0) {
                     this.bills = billing.items;
                     this.summary = { total_cost: billing.total_cost || 0, total_credit: billing.total_credit || 0 };
+                    this.meta = billing.meta || { cached: true };
+                } else {
+                    this.meta = { cached: false };
                 }
             } catch (e) {
                 // 缓存读取失败静默处理
@@ -88,19 +96,23 @@ export default {
                 message.warning('请选择账号');
                 return;
             }
+            const token = ++this.loadRequestToken;
             this.loading = true;
             try {
                 const response = await billingApi.yearly(
                     { account_id: this.accountId },
                     { refresh }
                 );
+                if (token !== this.loadRequestToken) return;
                 const billing = response.data;
                 this.bills = billing.items || [];
                 this.summary = { total_cost: billing.total_cost || 0, total_credit: billing.total_credit || 0 };
+                this.meta = billing.meta || { cached: false };
             } catch (e) {
+                if (token !== this.loadRequestToken) return;
                 message.error(errorMessage(e, '查询失败'));
             } finally {
-                this.loading = false;
+                if (token === this.loadRequestToken) this.loading = false;
             }
         }
     },

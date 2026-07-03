@@ -46,11 +46,11 @@ class QuotaService
 
         $cached = $this->getCached($cacheKey, $refresh);
         if ($cached !== null) {
-            return $cached;
+            return ['items' => $cached, 'meta' => $this->responseMeta(true, 'cache')];
         }
 
         if ($cacheOnly) {
-            return [];
+            return ['items' => [], 'meta' => $this->responseMeta(true, 'cache')];
         }
 
         $result = $this->provider->vcpuQuota($account, $normalized['region']);
@@ -62,7 +62,7 @@ class QuotaService
             $this->quotaWildcardCacheTag($normalized['account_id']),
         ]);
 
-        return $result;
+        return ['items' => $result, 'meta' => $this->responseMeta(false, 'aws')];
     }
 
     private function quotaAccountCacheTag(string $accountId): string
