@@ -1,11 +1,10 @@
-import { message } from '../plugins/antDesignVue.js'
+import { copyText } from '../utils/clipboard.js'
 
 export default {
   props: { value: [String, Number] },
   methods: {
     copy() {
-      navigator.clipboard?.writeText(String(this.value || ''))
-      message.success('已复制')
+      copyText(this.value)
     },
   },
   template: `
