@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace app\service\aws;
 
+use app\service\aws\concerns\AwsProviderCall;
 use Aws\Ec2\Ec2Client;
 use DateTimeInterface;
 use Throwable;
 
 class Ec2Provider
 {
+    use AwsProviderCall;
+
     public function __construct(private readonly AwsClientFactory $clients)
     {
     }
@@ -601,12 +604,4 @@ class Ec2Provider
         return "#!/bin/bash\nset -e\npassword=\$(printf '%s' '{$password}' | base64 -d)\necho \"root:\$password\" | chpasswd\npasswd -u root || true\nsed -i 's@^Include[ ]*/etc/ssh/sshd_config.d/\\*.conf@# Include /etc/ssh/sshd_config.d/*.conf@' /etc/ssh/sshd_config\nsed -i 's/^#\\?PermitRootLogin.*/PermitRootLogin yes/g' /etc/ssh/sshd_config\nsed -i 's/^#\\?PasswordAuthentication.*/PasswordAuthentication yes/g' /etc/ssh/sshd_config\nsed -i 's/^#\\?PubkeyAuthentication.*/PubkeyAuthentication no/g' /etc/ssh/sshd_config\nsed -i '/^AuthorizedKeysFile/s/^/#/' /etc/ssh/sshd_config\nsed -i 's/^#\\?KbdInteractiveAuthentication.*/KbdInteractiveAuthentication yes/g' /etc/ssh/sshd_config\nsed -i 's/^#\\?ChallengeResponseAuthentication.*/ChallengeResponseAuthentication yes/g' /etc/ssh/sshd_config\nif grep -qi alpine /etc/os-release 2>/dev/null; then service sshd restart || true; else systemctl restart ssh || systemctl restart sshd || service ssh restart || service sshd restart || true; fi\n";
     }
 
-    private function call(string $operation, callable $callback): mixed
-    {
-        try {
-            return $callback();
-        } catch (Throwable $exception) {
-            throw AwsError::convert($exception, $operation);
-        }
-    }
 }

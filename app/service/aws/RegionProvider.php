@@ -4,17 +4,19 @@ declare(strict_types=1);
 
 namespace app\service\aws;
 
-use Throwable;
+use app\service\aws\concerns\AwsProviderCall;
 
 class RegionProvider
 {
+    use AwsProviderCall;
+
     public function __construct(private readonly AwsClientFactory $clients)
     {
     }
 
     public function regions(array $account): array
     {
-        try {
+        return $this->call('account.list_regions', function () use ($account): array {
             $regions = [];
             $nextToken = null;
             do {
@@ -32,19 +34,15 @@ class RegionProvider
             usort($regions, static fn (array $a, array $b): int => strcmp((string) $a['region'], (string) $b['region']));
 
             return $regions;
-        } catch (Throwable $exception) {
-            throw AwsError::convert($exception, 'account.list_regions');
-        }
+        });
     }
 
     public function enable(array $account, string $region): array
     {
-        try {
+        return $this->call('account.enable_region', function () use ($account, $region): array {
             $this->clients->account($account)->enableRegion(['RegionName' => $region]);
 
             return ['account_id' => (string) $account['id'], 'region' => $region, 'status' => 'ENABLING'];
-        } catch (Throwable $exception) {
-            throw AwsError::convert($exception, 'account.enable_region');
-        }
+        });
     }
 }

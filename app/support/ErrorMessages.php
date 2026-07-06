@@ -50,9 +50,11 @@ class ErrorMessages
         'instance_name_invalid'               => 'Lightsail 实例名称格式不正确',
         'lightsail_action_invalid'            => '无效的 Lightsail 操作',
         'lightsail_action_confirm_required'   => '请确认要执行的操作',
+        'lightsail_static_ip_unavailable'     => 'IPv6-only Lightsail 实例不能绑定静态 IPv4 地址',
 
         // AWS SDK
         'aws_request_failed'       => 'AWS 请求失败',
+        'newbie_task_cancel_invalid' => '当前新手任务无法终止',
     ];
 
     /**

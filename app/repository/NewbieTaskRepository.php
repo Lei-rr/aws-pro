@@ -27,6 +27,7 @@ class NewbieTaskRepository
             'step' => (string) ($row['step'] ?? 'all'),
             'step_label' => (string) ($row['step_label'] ?? '全部任务'),
             'operation_ids' => is_array($row['operation_ids'] ?? null) ? $row['operation_ids'] : [],
+            'cancel_requested' => (bool) ($row['cancel_requested'] ?? false),
             'status' => (string) ($row['status'] ?? 'pending'),
             'message' => (string) ($row['message'] ?? ''),
             'created_at' => (int) ($row['created_at'] ?? 0),
@@ -61,6 +62,7 @@ class NewbieTaskRepository
                 'lambda' => 'nt-' . $id . '-lambda',
                 'rds' => 'nt-' . $id . '-rds',
             ],
+            'cancel_requested' => false,
             'status' => 'pending',
             'message' => '',
             'created_at' => $now,
@@ -70,7 +72,7 @@ class NewbieTaskRepository
         $this->store->transaction(static function (array $current) use ($task, $now, &$created): array {
             $items = is_array($current['items'] ?? null) ? $current['items'] : [];
             foreach ($items as $item) {
-                if (in_array((string) ($item['status'] ?? ''), ['pending', 'running'], true) && $now - (int) ($item['updated_at'] ?? 0) < 7200) {
+                if (in_array((string) ($item['status'] ?? ''), ['pending', 'running', 'cancelling'], true) && $now - (int) ($item['updated_at'] ?? 0) < 7200) {
                     return $current;
                 }
             }
@@ -101,6 +103,40 @@ class NewbieTaskRepository
 
             return $current;
         });
+    }
+
+    public function cancel(string $id): bool
+    {
+        $cancelled = false;
+        $this->store->transaction(static function (array $current) use ($id, &$cancelled): array {
+            $items = is_array($current['items'] ?? null) ? $current['items'] : [];
+            foreach ($items as &$item) {
+                if ((string) ($item['id'] ?? '') !== $id) {
+                    continue;
+                }
+                if (in_array((string) ($item['status'] ?? ''), ['pending', 'running', 'cancelling'], true)) {
+                    $item['cancel_requested'] = true;
+                    $item['status'] = 'cancelling';
+                    $item['message'] = 'cancel requested';
+                    $item['updated_at'] = time();
+                    $cancelled = true;
+                }
+                break;
+            }
+            unset($item);
+            $current['items'] = $items;
+
+            return $current;
+        });
+
+        return $cancelled;
+    }
+
+    public function cancelRequested(string $id): bool
+    {
+        $task = $this->find($id);
+
+        return $task !== null && (bool) ($task['cancel_requested'] ?? false);
     }
 
     public function delete(string $id): void

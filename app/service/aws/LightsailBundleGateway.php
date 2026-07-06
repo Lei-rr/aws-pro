@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace app\service\aws;
 
+use app\service\aws\concerns\AwsProviderCall;
 use Aws\Lightsail\LightsailClient;
-use Throwable;
 
 class LightsailBundleGateway
 {
+    use AwsProviderCall;
+
     public function __construct(private readonly AwsClientFactory $clients)
     {
     }
@@ -73,12 +75,4 @@ class LightsailBundleGateway
         return str_contains($bundleId, '_ipv6_');
     }
 
-    private function call(string $operation, callable $callback): mixed
-    {
-        try {
-            return $callback();
-        } catch (Throwable $exception) {
-            throw AwsError::convert($exception, $operation);
-        }
-    }
 }

@@ -25,6 +25,11 @@ class NewbieTaskController
         return ApiResponse::data($this->tasks->find($task));
     }
 
+    public function cancel(string $task): Response
+    {
+        return ApiResponse::data($this->tasks->cancel($task));
+    }
+
     public function stream(string $task): Response
     {
         return new StreamResponse(function () use ($task): void {

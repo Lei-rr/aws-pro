@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace app\service\aws;
 
+use app\exception\ApiException;
+use app\service\aws\concerns\AwsProviderCall;
 use Aws\Lightsail\LightsailClient;
 use Exception;
 use Throwable;
 
 class LightsailProvider
 {
+    use AwsProviderCall;
+
     public function __construct(private readonly AwsClientFactory $clients)
     {
     }
@@ -91,6 +95,7 @@ class LightsailProvider
     {
         $this->call('lightsail.allocate_static_ip', function () use ($account, $region, $instanceName): void {
             $client = $this->client($account, $region);
+            $this->ensureInstanceHasPublicIpv4($client, $instanceName);
             $staticIpName = 'sip-' . preg_replace('/[^A-Za-z0-9-]/', '-', $instanceName) . '-' . time();
             AwsRetry::run('allocate Lightsail static IP', fn (): mixed => $client->allocateStaticIp(['staticIpName' => $staticIpName]));
             try {
@@ -164,6 +169,14 @@ class LightsailProvider
         return '';
     }
 
+    private function ensureInstanceHasPublicIpv4(LightsailClient $client, string $instanceName): void
+    {
+        $instance = AwsRetry::run('get Lightsail instance before static IP allocation', fn (): mixed => $client->getInstance(['instanceName' => $instanceName]))['instance'] ?? [];
+        if ((string) ($instance['publicIpAddress'] ?? '') === '') {
+            throw new ApiException('IPv6-only Lightsail instances cannot bind a static IPv4 address', 422, 'lightsail_static_ip_unavailable', ['instance' => $instanceName]);
+        }
+    }
+
     private function waitStaticIpDetached(mixed $client, string $staticIpName): void
     {
         for ($i = 0; $i < 20; $i++) {
@@ -196,12 +209,4 @@ class LightsailProvider
         return "#!/bin/bash\nset -e\npassword=\$(printf '%s' '{$password}' | base64 -d)\necho \"root:\$password\" | chpasswd\npasswd -u root || true\nsed -i 's@^Include[ ]*/etc/ssh/sshd_config.d/\\*.conf@# Include /etc/ssh/sshd_config.d/*.conf@' /etc/ssh/sshd_config\nsed -i 's/^#\\?PermitRootLogin.*/PermitRootLogin yes/g' /etc/ssh/sshd_config\nsed -i 's/^#\\?PasswordAuthentication.*/PasswordAuthentication yes/g' /etc/ssh/sshd_config\nsed -i 's/^#\\?PubkeyAuthentication.*/PubkeyAuthentication no/g' /etc/ssh/sshd_config\nsed -i '/^AuthorizedKeysFile/s/^/#/' /etc/ssh/sshd_config\nsed -i 's/^#\\?KbdInteractiveAuthentication.*/KbdInteractiveAuthentication yes/g' /etc/ssh/sshd_config\nsed -i 's/^#\\?ChallengeResponseAuthentication.*/ChallengeResponseAuthentication yes/g' /etc/ssh/sshd_config\nif grep -qi alpine /etc/os-release 2>/dev/null; then service sshd restart || true; else systemctl restart ssh || systemctl restart sshd || service ssh restart || service sshd restart || true; fi\n";
     }
 
-    private function call(string $operation, callable $callback): mixed
-    {
-        try {
-            return $callback();
-        } catch (Throwable $exception) {
-            throw AwsError::convert($exception, $operation);
-        }
-    }
 }

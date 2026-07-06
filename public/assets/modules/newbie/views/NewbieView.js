@@ -35,6 +35,7 @@ export default {
             const status = this.task?.status || 'idle';
             if (status === 'completed') return 'success';
             if (status === 'failed') return 'error';
+            if (status === 'cancelling' || status === 'cancelled') return 'warning';
             if (status === 'running') return 'processing';
             return 'default';
         },
@@ -43,6 +44,8 @@ export default {
                 idle: '未开始',
                 pending: '等待执行',
                 running: '执行中',
+                cancelling: '终止中',
+                cancelled: '已终止',
                 completed: '已完成',
                 failed: '失败',
             };
@@ -94,8 +97,9 @@ export default {
             this.eventSource.onmessage = (event) => {
                 this.logs.push(event.data || '');
                 this.$nextTick(this.scrollLog);
-                if ((event.data || '').includes('执行完毕') || (event.data || '').includes('任务失败')) {
-                    this.task = { ...this.task, status: (event.data || '').includes('任务失败') ? 'failed' : 'completed' };
+                if ((event.data || '').includes('执行完毕') || (event.data || '').includes('任务失败') || (event.data || '').includes('任务已终止')) {
+                    const line = event.data || '';
+                    this.task = { ...this.task, status: line.includes('任务失败') ? 'failed' : (line.includes('任务已终止') ? 'cancelled' : 'completed') };
                     this.running = false;
                     this.closeStream();
                 }
@@ -105,6 +109,27 @@ export default {
                 this.running = false;
                 this.closeStream();
             };
+        },
+        confirmCancel() {
+            if (!this.task?.id || !this.running) return;
+            modal.confirm({
+                title: '确认终止新手任务',
+                content: '终止会停止后续步骤；已创建的临时资源仍会尽量继续清理。确定终止？',
+                okText: '终止任务',
+                okType: 'danger',
+                cancelText: '继续执行',
+                onOk: () => this.cancelTask(),
+            });
+        },
+        async cancelTask() {
+            if (!this.task?.id) return;
+            try {
+                const response = await newbieApi.cancelTask(this.task.id);
+                this.task = response.data;
+                this.logs.push('已发送终止请求，等待当前步骤停止并清理资源...');
+            } catch (e) {
+                message.error(errorMessage(e, '终止新手任务失败'));
+            }
         },
         closeStream() {
             if (this.eventSource) {
@@ -137,6 +162,7 @@ export default {
                         </a-select>
                     </div>
                     <a-button type="primary" :loading="loading || running" :disabled="!canStart" @click="confirmStart">开始执行</a-button>
+                    <a-button danger :disabled="!running" @click="confirmCancel">终止任务</a-button>
                     <a-button :disabled="running" @click="clearLog">清空日志</a-button>
                 </div>
             </section>

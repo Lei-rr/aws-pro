@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace app\service\aws;
 
+use app\service\aws\concerns\AwsProviderCall;
 use DateTimeImmutable;
-use Throwable;
 
 class BillingProvider
 {
+    use AwsProviderCall;
+
     public function __construct(private readonly AwsClientFactory $clients)
     {
     }
@@ -40,12 +42,4 @@ class BillingProvider
         });
     }
 
-    private function call(string $operation, callable $callback): mixed
-    {
-        try {
-            return $callback();
-        } catch (Throwable $exception) {
-            throw AwsError::convert($exception, $operation);
-        }
-    }
 }

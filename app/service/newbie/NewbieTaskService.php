@@ -46,6 +46,12 @@ class NewbieTaskService
     public function runStream(string $id, callable $emit): void
     {
         $task = $this->find($id);
+        if (($task['status'] ?? '') === 'cancelling') {
+            $emit('任务已终止：终止请求已接受，任务未开始执行。');
+            $this->tasks->delete((string) $task['id']);
+            return;
+        }
+
         if (($task['status'] ?? '') !== 'pending') {
             $emit('任务状态：' . ($task['status'] ?? 'unknown'));
             if (($task['message'] ?? '') !== '') {
@@ -58,13 +64,29 @@ class NewbieTaskService
         $account = $this->accounts->requireAccount((string) $task['account_id']);
         $this->tasks->updateStatus((string) $task['id'], 'running', 'running');
         try {
-            $this->runner->run($account, (string) ($task['step'] ?? 'all'), is_array($task['operation_ids'] ?? null) ? $task['operation_ids'] : [], $emit);
+            $this->runner->run($account, (string) ($task['step'] ?? 'all'), is_array($task['operation_ids'] ?? null) ? $task['operation_ids'] : [], $emit, fn (): bool => $this->tasks->cancelRequested((string) $task['id']));
             $emit('执行完毕，连接断开。');
+        } catch (NewbieTaskCancelledException $exception) {
+            $emit('任务已终止：' . $exception->getMessage());
         } catch (Throwable $exception) {
             $emit('任务失败：' . $exception->getMessage());
         } finally {
             $this->tasks->delete((string) $task['id']);
         }
+    }
+
+    public function cancel(string $id): array
+    {
+        $id = $this->taskId($id);
+        $task = $this->tasks->find($id);
+        if (!$task) {
+            throw new ApiException('Newbie task not found', 404, 'newbie_task_not_found', ['task_id' => $id]);
+        }
+        if (!$this->tasks->cancel($id)) {
+            throw new ApiException('Newbie task cannot be cancelled', 409, 'newbie_task_cancel_invalid', ['task_id' => $id]);
+        }
+
+        return $this->tasks->find($id) ?? $task;
     }
 
     private function taskId(string $id): string
