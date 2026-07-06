@@ -352,10 +352,12 @@ Provider 不负责：
       "state": "running",
       "instance_type": "t3.micro",
       "public_ipv4": "1.2.3.4",
+      "static_ip": "1.2.3.4",
       "public_ipv6": "2600:1f18::1",
       "private_ipv4": "172.31.0.10",
       "zone": "us-east-1a",
       "launched_at": "2026-07-06 12:00:00",
+      "remark": "生产",
       "sort_order": 0,
       "created_at": 1783005976,
       "updated_at": 1783005976
@@ -364,7 +366,7 @@ Provider 不负责：
 }
 ```
 
-规则：新增 EC2 实例字段必须先更新 `Ec2InstanceRepository` 的读写白名单。
+规则：新增 EC2 实例字段必须先更新 `Ec2InstanceRepository` 的读写白名单。`static_ip` 表示当前实例绑定的 Elastic IP；`remark` 只保存在本地 JSON，不写入 AWS。
 
 ### 12.6 `data/newbie-tasks.json`
 

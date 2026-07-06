@@ -7,7 +7,11 @@ export default {
     computed: {
         actions() {
             if (this.row.state === 'running') {
+                const staticIpAction = this.row.static_ip
+                    ? { key: 'release_static_ip', label: '释放静态 IP', danger: true }
+                    : { key: 'allocate_static_ip', label: '获取静态 IP' };
                 return [
+                    staticIpAction,
                     { key: 'stop', label: '停止' },
                     { key: 'reboot', label: '重启' },
                     { key: 'open_ports', label: '全端口', danger: true },
@@ -16,6 +20,7 @@ export default {
             }
             if (this.row.state === 'stopped') {
                 return [
+                    ...(this.row.static_ip ? [{ key: 'release_static_ip', label: '释放静态 IP', danger: true }] : []),
                     { key: 'start', label: '启动' },
                     { key: 'terminate', label: '终止', danger: true }
                 ];

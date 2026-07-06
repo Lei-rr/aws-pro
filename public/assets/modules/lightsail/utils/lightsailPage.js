@@ -16,7 +16,6 @@ export function lightsailState() {
         regions: {},
         blueprints: {},
         instances: [],
-        instancesMeta: { cached: false },
         loadRequestToken: 0,
         createConfigRequestToken: 0,
         remarkVisible: false,
@@ -86,11 +85,9 @@ export const lightsailMethods = {
             const response = await lightsailApi.instances();
             if (token !== this.loadRequestToken) return;
             this.instances = response.data.items || response.data || [];
-            this.instancesMeta = response.data.meta || { cached: false };
         } catch (e) {
             if (token !== this.loadRequestToken) return;
             this.instances = [];
-            this.instancesMeta = { cached: false };
             message.error(errorMessage(e, '加载实例失败'));
         } finally {
             if (token === this.loadRequestToken) this.loading = false;

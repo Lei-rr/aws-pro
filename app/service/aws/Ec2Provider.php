@@ -19,6 +19,7 @@ class Ec2Provider
         return $this->call('ec2.instances', function () use ($account, $region): array {
             $items = [];
             $client = $this->client($account, $region);
+            $staticIps = $this->elasticIpsByInstance($client);
             $params = ['MaxResults' => 1000];
             do {
                 $result = $client->describeInstances($params);
@@ -27,7 +28,7 @@ class Ec2Provider
                         if (($instance['State']['Name'] ?? '') === 'terminated') {
                             continue;
                         }
-                        $items[] = $this->instanceView($account, $region, $instance);
+                        $items[] = $this->instanceView($account, $region, $instance, $staticIps);
                     }
                 }
                 $params['NextToken'] = (string) ($result['NextToken'] ?? '');
@@ -45,8 +46,8 @@ class Ec2Provider
             $input = [
                 'ImageId' => $this->resolveAmi($client, (string) $data['ami']),
                 'InstanceType' => $data['instance_type'],
-                'MinCount' => $data['count'],
-                'MaxCount' => $data['count'],
+                'MinCount' => 1,
+                'MaxCount' => 1,
                 'MetadataOptions' => [
                     'HttpTokens' => 'required',
                     'HttpEndpoint' => 'enabled',
@@ -72,11 +73,7 @@ class Ec2Provider
                 }
             }
 
-            $result = $client->runInstances($input);
-            $instances = $result['Instances'] ?? [];
-            if ((int) $data['count'] > 1 && count($instances) > 1) {
-                $this->tagCreatedInstances($client, $instances, (string) $data['name']);
-            }
+            $client->runInstances($input);
         });
     }
 
@@ -97,7 +94,11 @@ class Ec2Provider
 
     public function terminateInstance(array $account, string $region, string $id): void
     {
-        $this->call('ec2.terminate_instance', fn (): mixed => $this->client($account, $region)->terminateInstances(['InstanceIds' => [$id]]));
+        $this->call('ec2.terminate_instance', function () use ($account, $region, $id): void {
+            $client = $this->client($account, $region);
+            $this->releaseStaticIpByClient($client, $id);
+            $client->terminateInstances(['InstanceIds' => [$id]]);
+        });
     }
 
     public function openAllPorts(array $account, string $region, string $id): void
@@ -125,6 +126,35 @@ class Ec2Provider
                 $this->authorizeSecurityGroup($client, 'authorizeSecurityGroupEgress', $groupId, [['IpProtocol' => '-1', 'IpRanges' => [['CidrIp' => '0.0.0.0/0']]]]);
                 $this->authorizeSecurityGroup($client, 'authorizeSecurityGroupEgress', $groupId, [['IpProtocol' => '-1', 'Ipv6Ranges' => [['CidrIpv6' => '::/0']]]]);
             }
+        });
+    }
+
+    public function allocateStaticIp(array $account, string $region, string $id): void
+    {
+        $this->call('ec2.allocate_static_ip', function () use ($account, $region, $id): void {
+            $client = $this->client($account, $region);
+            if ($this->elasticIpForInstance($client, $id) !== null) {
+                return;
+            }
+            $allocation = $client->allocateAddress(['Domain' => 'vpc']);
+            $allocationId = (string) ($allocation['AllocationId'] ?? '');
+            if ($allocationId === '') {
+                throw new \RuntimeException('EC2 AllocateAddress returned empty allocation id');
+            }
+            try {
+                $client->associateAddress(['InstanceId' => $id, 'AllocationId' => $allocationId]);
+            } catch (Throwable $exception) {
+                $client->releaseAddress(['AllocationId' => $allocationId]);
+                throw $exception;
+            }
+        });
+    }
+
+    public function releaseStaticIp(array $account, string $region, string $id): void
+    {
+        $this->call('ec2.release_static_ip', function () use ($account, $region, $id): void {
+            $client = $this->client($account, $region);
+            $this->releaseStaticIpByClient($client, $id);
         });
     }
 
@@ -438,16 +468,6 @@ class Ec2Provider
             <=> [empty($b['DefaultForAz']) ? 1 : 0, (string) ($b['AvailabilityZone'] ?? ''), (string) ($b['SubnetId'] ?? '')];
     }
 
-    private function tagCreatedInstances(Ec2Client $client, array $instances, string $name): void
-    {
-        $ids = array_values(array_filter(array_map(static fn (array $instance): string => (string) ($instance['InstanceId'] ?? ''), $instances)));
-        sort($ids);
-        $width = max(2, strlen((string) count($ids)));
-        foreach ($ids as $index => $id) {
-            $client->createTags(['Resources' => [$id], 'Tags' => [['Key' => 'Name', 'Value' => sprintf('%s-%0' . $width . 'd', $name, $index + 1)]]]);
-        }
-    }
-
     private function authorizeSecurityGroup(Ec2Client $client, string $method, string $groupId, array $permissions): void
     {
         try {
@@ -464,7 +484,67 @@ class Ec2Provider
         return method_exists($exception, 'getAwsErrorCode') && in_array((string) $exception->getAwsErrorCode(), $codes, true);
     }
 
-    private function instanceView(array $account, string $region, array $instance): array
+    private function elasticIpsByInstance(Ec2Client $client): array
+    {
+        $items = [];
+        foreach (($client->describeAddresses([])['Addresses'] ?? []) as $address) {
+            $instanceId = (string) ($address['InstanceId'] ?? '');
+            $publicIp = (string) ($address['PublicIp'] ?? '');
+            if ($instanceId !== '' && $publicIp !== '') {
+                $items[$instanceId] = $publicIp;
+            }
+        }
+
+        return $items;
+    }
+
+    private function elasticIpForInstance(Ec2Client $client, string $id): ?array
+    {
+        foreach (($client->describeAddresses(['Filters' => [['Name' => 'instance-id', 'Values' => [$id]]]])['Addresses'] ?? []) as $address) {
+            if ((string) ($address['AllocationId'] ?? '') !== '') {
+                return $address;
+            }
+        }
+
+        return null;
+    }
+
+    private function releaseStaticIpByClient(Ec2Client $client, string $id): void
+    {
+        $address = $this->elasticIpForInstance($client, $id);
+        if ($address === null) {
+            return;
+        }
+        $associationId = (string) ($address['AssociationId'] ?? '');
+        if ($associationId !== '') {
+            $client->disassociateAddress(['AssociationId' => $associationId]);
+            $this->waitAddressDisassociated($client, (string) ($address['AllocationId'] ?? ''), $id);
+        }
+        $allocationId = (string) ($address['AllocationId'] ?? '');
+        if ($allocationId !== '') {
+            $client->releaseAddress(['AllocationId' => $allocationId]);
+        }
+    }
+
+    private function waitAddressDisassociated(Ec2Client $client, string $allocationId, string $id): void
+    {
+        if ($allocationId === '') {
+            return;
+        }
+        for ($attempt = 0; $attempt < 10; $attempt++) {
+            $addresses = $client->describeAddresses(['AllocationIds' => [$allocationId]])['Addresses'] ?? [];
+            $instanceId = (string) ($addresses[0]['InstanceId'] ?? '');
+            $associationId = (string) ($addresses[0]['AssociationId'] ?? '');
+            if ($instanceId !== $id && $associationId === '') {
+                return;
+            }
+            usleep(500000);
+        }
+
+        throw new \RuntimeException('EC2 Elastic IP did not detach from instance: ' . $id);
+    }
+
+    private function instanceView(array $account, string $region, array $instance, array $staticIps): array
     {
         $name = '';
         foreach (($instance['Tags'] ?? []) as $tag) {
@@ -492,6 +572,7 @@ class Ec2Provider
             'state' => (string) ($instance['State']['Name'] ?? ''),
             'instance_type' => (string) ($instance['InstanceType'] ?? ''),
             'public_ipv4' => (string) ($instance['PublicIpAddress'] ?? ''),
+            'static_ip' => $staticIps[(string) ($instance['InstanceId'] ?? '')] ?? '',
             'public_ipv6' => $ipv6,
             'private_ipv4' => (string) ($instance['PrivateIpAddress'] ?? ''),
             'zone' => (string) ($instance['Placement']['AvailabilityZone'] ?? ''),

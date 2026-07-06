@@ -68,7 +68,15 @@ class Ec2Service
 
     public function sync(array $account, string $accountId, string $region): array
     {
-        $synced = $this->provider->instances($account, $region);
+        $remarks = $this->remarksByInstance($this->instances->all());
+        $synced = array_map(function (array $item) use ($remarks): array {
+            $key = $this->instanceKey((string) ($item['account_id'] ?? ''), (string) ($item['region'] ?? ''), (string) ($item['id'] ?? ''));
+            if (isset($remarks[$key])) {
+                $item['remark'] = $remarks[$key];
+            }
+
+            return $item;
+        }, $this->provider->instances($account, $region));
         $this->instances->replaceScope($accountId, $region, $synced);
         $this->invalidateEc2Cache($accountId);
 
@@ -92,6 +100,8 @@ class Ec2Service
         $instanceId = $this->instanceId($instanceId);
 
         match ($action) {
+            'allocate_static_ip' => $this->provider->allocateStaticIp($account, $region, $instanceId),
+            'release_static_ip' => $this->provider->releaseStaticIp($account, $region, $instanceId),
             'start' => $this->provider->startInstance($account, $region, $instanceId),
             'stop' => $this->provider->stopInstance($account, $region, $instanceId),
             'reboot' => $this->provider->rebootInstance($account, $region, $instanceId),
@@ -103,6 +113,19 @@ class Ec2Service
         $this->invalidateEc2Cache((string) $account['id']);
 
         return $action . ' submitted';
+    }
+
+    public function updateRemark(string $accountId, string $region, string $instanceId, string $remark): array
+    {
+        $instanceId = $this->instanceId($instanceId);
+        $remark = trim($remark);
+        $instance = $this->instances->updateRemark($accountId, $region, $instanceId, $remark);
+        if ($instance === null) {
+            throw new ApiException('EC2 instance not found', 404, 'ec2_instance_not_found', ['instance' => $instanceId]);
+        }
+        $this->invalidateEc2Cache($accountId);
+
+        return $instance;
     }
 
     private function normalizeListFilters(array $filters): array
@@ -127,13 +150,10 @@ class Ec2Service
         if (!isset(self::INSTANCE_TYPES[$instanceType])) {
             throw new ApiException('Invalid EC2 instance type', 422, 'ec2_instance_type_invalid', ['instance_type' => $instanceType]);
         }
-        $count = max(1, min(10, (int) ($data['count'] ?? 1)));
-
         return [
             'name' => AwsValidator::instanceName((string) $data['name']),
             'ami' => $ami,
             'instance_type' => $instanceType,
-            'count' => $count,
             'enable_ipv6' => filter_var($data['enable_ipv6'] ?? false, FILTER_VALIDATE_BOOL),
             'root_password' => (string) ($data['root_password'] ?? ''),
         ];
@@ -142,7 +162,7 @@ class Ec2Service
     private function normalizeActionData(array $data): array
     {
         $action = trim((string) ($data['action'] ?? ''));
-        $allowed = ['start', 'stop', 'reboot', 'terminate', 'open_ports'];
+        $allowed = ['allocate_static_ip', 'release_static_ip', 'start', 'stop', 'reboot', 'terminate', 'open_ports'];
         if (!in_array($action, $allowed, true)) {
             throw new ApiException('Invalid EC2 action', 422, 'ec2_action_invalid', ['action' => $action]);
         }
@@ -178,6 +198,25 @@ class Ec2Service
     {
         $this->provider->terminateInstance($account, $region, $instanceId);
         $this->instances->deleteInstance((string) $account['id'], $region, $instanceId);
+    }
+
+    private function instanceKey(string $accountId, string $region, string $id): string
+    {
+        return $accountId . "\n" . $region . "\n" . $id;
+    }
+
+    private function remarksByInstance(array $items): array
+    {
+        $remarks = [];
+        foreach ($items as $item) {
+            $key = $this->instanceKey((string) ($item['account_id'] ?? ''), (string) ($item['region'] ?? ''), (string) ($item['id'] ?? ''));
+            $remark = (string) ($item['remark'] ?? '');
+            if ($remark !== '') {
+                $remarks[$key] = $remark;
+            }
+        }
+
+        return $remarks;
     }
 
     private function ec2CacheTags(?string $accountId): array

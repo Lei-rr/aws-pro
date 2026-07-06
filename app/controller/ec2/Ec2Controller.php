@@ -52,6 +52,13 @@ class Ec2Controller
         return ApiResponse::data(['message' => $this->ec2->runAction($account, $region, $instance, input('post.', []))]);
     }
 
+    public function remark(string $instance): Response
+    {
+        [, $accountId, $region] = $this->accountRegion();
+
+        return ApiResponse::data($this->ec2->updateRemark($accountId, $region, $instance, (string) input('put.remark', '')));
+    }
+
     private function accountRegion(): array
     {
         $accountId = trim((string) (input('post.account_id', '') ?: input('put.account_id', '') ?: input('get.account_id', '')));

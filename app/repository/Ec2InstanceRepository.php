@@ -28,10 +28,12 @@ class Ec2InstanceRepository
             'state' => (string) ($row['state'] ?? ''),
             'instance_type' => (string) ($row['instance_type'] ?? ''),
             'public_ipv4' => (string) ($row['public_ipv4'] ?? ''),
+            'static_ip' => (string) ($row['static_ip'] ?? ''),
             'public_ipv6' => (string) ($row['public_ipv6'] ?? ''),
             'private_ipv4' => (string) ($row['private_ipv4'] ?? ''),
             'zone' => (string) ($row['zone'] ?? ''),
             'launched_at' => (string) ($row['launched_at'] ?? ''),
+            'remark' => (string) ($row['remark'] ?? ''),
         ], array_values($items));
     }
 
@@ -44,6 +46,23 @@ class Ec2InstanceRepository
     public function deleteInstance(string $accountId, string $region, string $id): void
     {
         $this->saveAll(array_filter($this->all(), static fn (array $instance): bool => (string) ($instance['account_id'] ?? '') !== $accountId || (string) ($instance['region'] ?? '') !== $region || (string) ($instance['id'] ?? '') !== $id));
+    }
+
+    public function updateRemark(string $accountId, string $region, string $id, string $remark): ?array
+    {
+        $updated = null;
+        $instances = array_map(function (array $instance) use ($accountId, $region, $id, $remark, &$updated): array {
+            if ((string) ($instance['account_id'] ?? '') === $accountId && (string) ($instance['region'] ?? '') === $region && (string) ($instance['id'] ?? '') === $id) {
+                $instance['remark'] = $remark;
+                $updated = $instance;
+            }
+
+            return $instance;
+        }, $this->all());
+
+        $this->saveAll($instances);
+
+        return $updated;
     }
 
     public function renameAccount(string $from, string $to): void
@@ -75,10 +94,12 @@ class Ec2InstanceRepository
                 'state' => (string) ($instance['state'] ?? ''),
                 'instance_type' => (string) ($instance['instance_type'] ?? ''),
                 'public_ipv4' => (string) ($instance['public_ipv4'] ?? ''),
+                'static_ip' => (string) ($instance['static_ip'] ?? ''),
                 'public_ipv6' => (string) ($instance['public_ipv6'] ?? ''),
                 'private_ipv4' => (string) ($instance['private_ipv4'] ?? ''),
                 'zone' => (string) ($instance['zone'] ?? ''),
                 'launched_at' => (string) ($instance['launched_at'] ?? ''),
+                'remark' => (string) ($instance['remark'] ?? ''),
                 'sort_order' => $index,
                 'created_at' => (int) ($instance['created_at'] ?? $now),
                 'updated_at' => $now,

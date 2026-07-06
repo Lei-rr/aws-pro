@@ -13,6 +13,9 @@ export const ec2Api = {
     create(data) {
         return http.post('/ec2/instances', data);
     },
+    updateRemark(data) {
+        return http.put(`/ec2/instances/${encodeURIComponent(data.instance_id)}/remark`, data);
+    },
     action(data) {
         return http.post(`/ec2/instances/${encodeURIComponent(data.instance_id)}/actions`, data);
     }

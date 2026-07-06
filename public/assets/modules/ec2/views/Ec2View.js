@@ -1,11 +1,12 @@
 import Ec2Toolbar from '../components/Ec2Toolbar.js';
 import Ec2List from '../components/Ec2List.js';
 import CreateEc2Dialog from '../components/CreateEc2Dialog.js';
+import InstanceRemarkDialog from '../../../shared/components/InstanceRemarkDialog.js';
 import { ec2Computed, ec2Methods, ec2Mounted, ec2State } from '../utils/ec2Page.js';
 
 export default {
     name: 'Ec2View',
-    components: { Ec2Toolbar, Ec2List, CreateEc2Dialog },
+    components: { Ec2Toolbar, Ec2List, CreateEc2Dialog, InstanceRemarkDialog },
     data: ec2State,
     computed: ec2Computed,
     mounted: ec2Mounted,
@@ -28,7 +29,9 @@ export default {
                 :account-options="accountOptions"
                 :type-options="typeOptions"
                 @operate="operate"
+                @remark="openRemark"
             />
+            <instance-remark-dialog v-model:visible="remarkVisible" :saving="remarkSaving" :form="remarkForm" @save="saveRemark" />
             <create-ec2-dialog
                 v-model:visible="createVisible"
                 :loading="configLoading"

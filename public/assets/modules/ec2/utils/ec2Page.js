@@ -19,6 +19,15 @@ export function ec2State() {
         loadRequestToken: 0,
         configRequestToken: 0,
         actionLoadingKey: '',
+        remarkVisible: false,
+        remarkSaving: false,
+        remarkForm: {
+            account_id: '',
+            region: '',
+            instance_id: '',
+            name: '',
+            remark: ''
+        },
         createVisible: false,
         createForm: emptyCreateForm()
     };
@@ -29,7 +38,6 @@ function emptyCreateForm() {
         name: '',
         ami: 'ubuntu-24.04',
         instance_type: 't3.micro',
-        count: 1,
         enable_ipv6: true,
         root_password: ''
     };
@@ -134,7 +142,13 @@ export const ec2Methods = {
         }
     },
     operate(row, action) {
+        if (action === 'remark') {
+            this.openRemark(row);
+            return;
+        }
         const names = {
+            allocate_static_ip: '获取静态 IP',
+            release_static_ip: '释放静态 IP',
             start: '启动',
             stop: '停止',
             reboot: '重启',
@@ -142,17 +156,19 @@ export const ec2Methods = {
             open_ports: '全端口'
         };
         const risks = {
+            allocate_static_ip: '获取静态 IP 会创建并绑定新的 Elastic IP，请确认当前实例需要固定公网 IPv4。',
+            release_static_ip: '释放静态 IP 后该 Elastic IP 将解绑并释放。',
             start: '启动实例会恢复运行并可能产生费用，请确认需要启动。',
             stop: '停止实例会中断当前服务，请确认业务可以暂停。',
             reboot: '重启实例会造成短暂不可用，请确认可以中断。',
-            terminate: '终止实例不可恢复，请确认数据已备份。',
+            terminate: '终止实例不可恢复，已绑定的 Elastic IP 会一并释放，请确认数据已备份。',
             open_ports: '全端口会对实例安全组开放 IPv4/IPv6 所有端口，请确认这是你想要的操作。'
         };
         modal.confirm({
             title: `确认${names[action]}`,
             content: `确定对 ${row.name || row.id} 执行“${names[action]}”？\n${risks[action]}`,
             okText: '确认',
-            okType: ['terminate', 'open_ports'].includes(action) ? 'danger' : 'primary',
+            okType: ['terminate', 'open_ports', 'release_static_ip'].includes(action) ? 'danger' : 'primary',
             cancelText: '取消',
             onOk: () => this.runInstanceAction(row, action)
         });
@@ -179,6 +195,41 @@ export const ec2Methods = {
             message.error(errorMessage(e, 'EC2 操作失败'));
         } finally {
             this.actionLoadingKey = '';
+        }
+    },
+    openRemark(row) {
+        this.remarkForm = {
+            account_id: row.account_id,
+            region: row.region,
+            instance_id: row.id,
+            name: row.name || row.id,
+            remark: row.remark || ''
+        };
+        this.remarkVisible = true;
+    },
+    async saveRemark() {
+        this.remarkForm.remark = this.remarkForm.remark.trim();
+        this.remarkSaving = true;
+        try {
+            const response = await ec2Api.updateRemark({
+                account_id: this.remarkForm.account_id,
+                region: this.remarkForm.region,
+                instance_id: this.remarkForm.instance_id,
+                remark: this.remarkForm.remark
+            });
+            const updated = response.data;
+            this.instances = this.instances.map((item) => {
+                if (item.account_id === updated.account_id && item.region === updated.region && item.id === updated.id) {
+                    return updated;
+                }
+                return item;
+            });
+            this.remarkVisible = false;
+            message.success('备注已保存');
+        } catch (e) {
+            message.error(errorMessage(e, '备注保存失败'));
+        } finally {
+            this.remarkSaving = false;
         }
     },
     async copyInstanceList() {

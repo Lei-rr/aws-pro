@@ -1,5 +1,5 @@
 export default {
-    name: 'RemarkDialog',
+    name: 'InstanceRemarkDialog',
     props: {
         visible: { type: Boolean, default: false },
         saving: { type: Boolean, default: false },

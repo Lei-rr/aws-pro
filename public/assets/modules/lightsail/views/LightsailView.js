@@ -1,12 +1,12 @@
 import InstanceToolbar from '../components/InstanceToolbar.js';
 import InstanceList from '../components/InstanceList.js';
 import CreateInstanceDialog from '../components/CreateInstanceDialog.js';
-import RemarkDialog from '../components/RemarkDialog.js';
+import InstanceRemarkDialog from '../../../shared/components/InstanceRemarkDialog.js';
 import { lightsailComputed, lightsailMethods, lightsailMounted, lightsailState } from '../utils/lightsailPage.js';
 
 export default {
     name: 'LightsailView',
-    components: { InstanceToolbar, InstanceList, CreateInstanceDialog, RemarkDialog },
+    components: { InstanceToolbar, InstanceList, CreateInstanceDialog, InstanceRemarkDialog },
     data: lightsailState,
     computed: lightsailComputed,
     mounted: lightsailMounted,
@@ -25,14 +25,13 @@ export default {
             <instance-list
                 :loading="loading"
                 :instances="instances"
-                :meta="instancesMeta"
                 :regions="regions"
                 :account-options="accountOptions"
                 :bundle-options="bundleOptions"
                 @operate="operate"
                 @remark="openRemark"
             />
-            <remark-dialog v-model:visible="remarkVisible" :saving="remarkSaving" :form="remarkForm" @save="saveRemark" />
+            <instance-remark-dialog v-model:visible="remarkVisible" :saving="remarkSaving" :form="remarkForm" @save="saveRemark" />
             <create-instance-dialog
                 v-model:visible="createVisible"
                 :loading="configLoading"
