@@ -1,4 +1,4 @@
-import { accountApi } from './api.js';
+import { accountApi } from '../api/accounts.js';
 
 const { defineStore } = Pinia;
 

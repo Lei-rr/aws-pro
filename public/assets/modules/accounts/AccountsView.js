@@ -1,4 +1,4 @@
-import { accountApi } from './api.js';
+import { accountApi } from '../../shared/api/accounts.js';
 import { message, modal } from '../../shared/plugins/antDesignVue.js';
 import TableActions from '../../shared/components/TableActions.js';
 import { errorMessage } from '../../shared/utils/errors.js';

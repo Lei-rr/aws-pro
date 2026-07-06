@@ -1,6 +1,6 @@
-import { loadAccounts, useAccountStore } from '../store.js';
-import { message } from '../../../shared/plugins/antDesignVue.js';
-import { errorMessage } from '../../../shared/utils/errors.js';
+import { loadAccounts, useAccountStore } from '../stores/accounts.js';
+import { message } from '../plugins/antDesignVue.js';
+import { errorMessage } from '../utils/errors.js';
 
 export default {
     name: 'AccountSelect',

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace app\controller\system;
 
+use app\controller\concerns\ResolvesQueryParams;
 use app\exception\ApiException;
 use app\repository\AwsConfigRepository;
 use app\support\ApiResponse;
@@ -11,13 +12,15 @@ use think\Response;
 
 class ConfigController
 {
+    use ResolvesQueryParams;
+
     public function __construct(private readonly AwsConfigRepository $config)
     {
     }
 
     public function index(): Response
     {
-        $type = trim((string) input('get.type', 'all'));
+        $type = $this->stringQuery('type', 'all');
         if ($type === 'regions') {
             return ApiResponse::data($this->config->get('regions', []));
         }

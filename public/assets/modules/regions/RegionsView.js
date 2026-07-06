@@ -1,5 +1,5 @@
-import AccountSelect from '../accounts/components/AccountSelect.js';
-import { loadConfig, useConfigStore } from '../system/store/config.js';
+import AccountSelect from '../../shared/components/AccountSelect.js';
+import { loadConfig, useConfigStore } from '../../shared/stores/config.js';
 import { regionsApi } from './api.js';
 import { message, modal } from '../../shared/plugins/antDesignVue.js';
 import { regionName } from '../../shared/utils/format.js';

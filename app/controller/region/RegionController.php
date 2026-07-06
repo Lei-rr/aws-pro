@@ -20,7 +20,7 @@ class RegionController
     public function index(): Response
     {
         return ApiResponse::data($this->regions->list(
-            (string) input('get.account_id', ''),
+            $this->stringQuery('account_id'),
             $this->boolQuery('refresh'),
             $this->boolQuery('cache_only')
         ));

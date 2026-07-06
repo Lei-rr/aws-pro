@@ -4,15 +4,18 @@ declare(strict_types=1);
 
 namespace app\controller\lightsail;
 
-use app\exception\ApiException;
+use app\controller\concerns\ResolvesAccountRegion;
+use app\controller\concerns\ResolvesQueryParams;
 use app\service\account\AccountService;
 use app\service\lightsail\LightsailService;
 use app\support\ApiResponse;
-use app\support\AwsValidator;
 use think\Response;
 
 class LightsailController
 {
+    use ResolvesAccountRegion;
+    use ResolvesQueryParams;
+
     public function __construct(
         private readonly AccountService $accounts,
         private readonly LightsailService $lightsail,
@@ -22,8 +25,8 @@ class LightsailController
     public function instances(): Response
     {
         return ApiResponse::data($this->lightsail->listCached(
-            input('get.account_id'),
-            input('get.region')
+            $this->stringQuery('account_id'),
+            $this->stringQuery('region')
         ));
     }
 
@@ -75,17 +78,4 @@ class LightsailController
         )]);
     }
 
-    private function accountRegion(): array
-    {
-        $accountId = trim((string) (input('post.account_id', '') ?: input('put.account_id', '') ?: input('get.account_id', '')));
-        $region = trim((string) (input('post.region', '') ?: input('put.region', '') ?: input('get.region', '')));
-        if ($accountId === '' || $region === '') {
-            throw new ApiException('account_id and region are required', 422, 'field_required', ['fields' => ['account_id', 'region']]);
-        }
-
-        $accountId = AwsValidator::accountId($accountId);
-        $region = AwsValidator::region($region);
-
-        return [$this->accounts->requireAccount($accountId), $accountId, $region];
-    }
 }

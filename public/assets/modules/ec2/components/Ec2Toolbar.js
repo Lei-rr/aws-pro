@@ -1,4 +1,4 @@
-import AccountSelect from '../../accounts/components/AccountSelect.js';
+import AccountSelect from '../../../shared/components/AccountSelect.js';
 
 export default {
     name: 'Ec2Toolbar',

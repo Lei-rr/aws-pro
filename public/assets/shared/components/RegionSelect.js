@@ -1,6 +1,6 @@
-import { loadConfig, useConfigStore } from '../store/config.js';
-import { message } from '../../../shared/plugins/antDesignVue.js';
-import { errorMessage } from '../../../shared/utils/errors.js';
+import { loadConfig, useConfigStore } from '../stores/config.js';
+import { message } from '../plugins/antDesignVue.js';
+import { errorMessage } from '../utils/errors.js';
 
 export default {
     name: 'RegionSelect',

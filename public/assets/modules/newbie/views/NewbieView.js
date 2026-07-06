@@ -1,4 +1,4 @@
-import AccountSelect from '../../accounts/components/AccountSelect.js';
+import AccountSelect from '../../../shared/components/AccountSelect.js';
 import { newbieApi } from '../api.js';
 import { errorMessage } from '../../../shared/utils/errors.js';
 import { message, modal } from '../../../shared/plugins/antDesignVue.js';

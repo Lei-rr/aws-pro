@@ -1,4 +1,4 @@
-import http from '../../../shared/utils/request.js';
+import http from '../utils/request.js';
 
 export const configApi = {
     all() {

@@ -1,5 +1,5 @@
-import AccountSelect from '../accounts/components/AccountSelect.js';
-import RegionSelect from '../system/components/RegionSelect.js';
+import AccountSelect from '../../shared/components/AccountSelect.js';
+import RegionSelect from '../../shared/components/RegionSelect.js';
 import { quotaApi } from './api.js';
 import { regionName } from '../../shared/utils/format.js';
 import { errorMessage } from '../../shared/utils/errors.js';

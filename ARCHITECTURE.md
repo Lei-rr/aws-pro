@@ -53,9 +53,14 @@
 统一使用：
 
 - `ResolvesQueryParams`
+- `ResolvesAccountRegion`
 - `ValidatesInput`
 
-`ValidatesInput` 是控制层唯一输入校验入口：
+`ResolvesAccountRegion` 是需要同时解析 `account_id` / `region` 的 controller 统一入口，负责从 `post`、`put`、`get` 读取参数，调用 `AwsValidator` 校验，并返回 `[account, account_id, region]`。
+
+`ResolvesQueryParams` 负责无业务语义的 query / form 标量解析，例如 `stringQuery()`、`boolQuery()`、`boolPost()`。布尔参数必须通过该 concern 解析，避免 PHP 将字符串 `"false"` 转成 `true`。
+
+`ValidatesInput` 是控制层结构化输入校验入口：
 
 - `queryInput()` / `postInput()` / `putInput()`：返回 `checked()` 后的净化输入
 - `rawQueryInput()` / `rawPostInput()` / `rawPutInput()`：先校验，再返回原始输入
@@ -64,7 +69,7 @@
 
 1. 默认使用净化输入。
 2. 只有在 service 需要保留未声明字段时，才使用 `raw*Input()`。
-3. controller 不再手写 `validate(...)->scene(...)->checked(input(...))`。
+3. controller 不再重复手写相同的参数提取、校验和账号加载逻辑。
 
 ## 3. Service 分层约定
 
@@ -124,12 +129,19 @@ Provider 负责：
 - AWS SDK 调用
 - provider 级缓存
 - AWS 返回结果映射
+- AWS 错误转换
+- 幂等调用和临时错误重试
 
 Provider 不负责：
 
 - 业务编排
 - workflow 降级语义
 - 本地持久化
+
+约定：
+
+1. provider 内部重复的 `try/catch -> AwsError::convert()` 统一走 `AwsProviderCall`。
+2. 限流、瞬时错误、幂等成功码统一走 `AwsRetry`，不要在业务 service 中散落 sleep / retry 循环。
 
 ## 4. Repository 约定
 
@@ -182,13 +194,15 @@ Provider 不负责：
 1. 业务模块之间不允许横向直接调用彼此业务实现。
 2. 跨模块复用只能走：`support/`、`service/concerns/`、中立支撑服务或 AWS provider。
 3. 不允许因为局部便利把一个业务模块的实现塞进另一个业务模块。
+4. 前端跨模块复用组件必须放入 `public/assets/shared/components`，例如 `AccountSelect`、`RegionSelect`、实例表格骨架、备注弹窗、静态 IP 单元格、复制按钮。
+5. 前端跨模块复用 API / store 必须放入 `public/assets/shared/api` 或 `public/assets/shared/stores`，例如账号列表、系统配置、Dashboard 只读实例聚合。
 
 ## 7. 前端架构约定
 
 前端分三层：
 
 1. `modules/`：业务模块
-2. `shared/`：共享组件与工具
+2. `shared/`：共享 API、store、组件与工具
 3. `routes/`：系统级路由解析
 
 规则：
@@ -198,6 +212,8 @@ Provider 不负责：
 3. 使用：`errorMessage(error)`。
 4. 高风险页面必须做请求生命周期保护（latest-only token）。
 5. route 切换时，旧弹窗和旧上下文必须及时关闭或失效。
+6. `modules/` 内只放本模块页面、API、store 和私有组件；被两个以上模块引用的组件必须迁移到 `shared/`。
+7. `shared/` 不能反向引用 `modules/`，否则共享层会退化成业务模块聚合层。
 
 ## 8. 请求生命周期约定
 
@@ -386,6 +402,7 @@ Provider 不负责：
         "rds": "nt-a1b2c3d4e5f67890-rds"
       },
       "status": "pending",
+      "cancel_requested": false,
       "message": "",
       "created_at": 1783005976,
       "updated_at": 1783005976
@@ -394,7 +411,7 @@ Provider 不负责：
 }
 ```
 
-用途：记录新手任务临时状态，用于 SSE 开始前交接和运行中并发锁；任务结束后立即删除，不持久化完成/失败结果。`operation_ids` 用于当前任务内的幂等资源名 / token，避免创建请求响应异常时重复创建。`step` 支持 `all`、`budget`、`ec2`、`lambda`、`rds`；`all` 按固定顺序执行，单项用于失败后重试。任务执行日志通过 SSE 实时输出，不落盘保存。
+用途：记录新手任务临时状态，用于 SSE 开始前交接、运行中并发锁和终止请求传递；任务结束后立即删除，不持久化完成/失败结果。`operation_ids` 用于当前任务内的幂等资源名 / token，避免创建请求响应异常时重复创建。`cancel_requested` 表示前端已请求终止，runner 会停止后续步骤并尽量清理已创建资源。`step` 支持 `all`、`budget`、`ec2`、`lambda`、`rds`；`all` 按固定顺序执行，单项用于失败后重试。任务执行日志通过 SSE 实时输出，不落盘保存。
 
 ## 13. API Meta 约定
 

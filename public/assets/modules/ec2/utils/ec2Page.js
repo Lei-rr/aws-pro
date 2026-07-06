@@ -1,4 +1,4 @@
-import { configApi } from '../../system/api/config.js';
+import { configApi } from '../../../shared/api/config.js';
 import { ec2Api } from '../api.js';
 import { regionName } from '../../../shared/utils/format.js';
 import { copyText } from '../../../shared/utils/clipboard.js';

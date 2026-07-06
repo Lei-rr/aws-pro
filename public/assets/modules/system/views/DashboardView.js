@@ -1,24 +1,23 @@
 import { regionName } from '../../../shared/utils/format.js';
 import { errorMessage } from '../../../shared/utils/errors.js';
 import { message } from '../../../shared/plugins/antDesignVue.js';
-import { loadAccounts, useAccountStore } from '../../accounts/store.js';
-import { ec2Api } from '../../ec2/api.js';
-import { loadConfig, useConfigStore } from '../store/config.js';
-import { loadInstances, useLightsailStore } from '../../lightsail/store.js';
+import { loadAccounts, useAccountStore } from '../../../shared/stores/accounts.js';
+import { loadConfig, useConfigStore } from '../../../shared/stores/config.js';
+import { instanceApi } from '../../../shared/api/instances.js';
 
 export default {
     name: 'DashboardView',
     data() {
         return {
             loading: false,
+            lightsailInstances: [],
             ec2Instances: []
         };
     },
     setup() {
         return {
             accountStore: useAccountStore(),
-            configStore: useConfigStore(),
-            lightsailStore: useLightsailStore()
+            configStore: useConfigStore()
         };
     },
     computed: {
@@ -27,7 +26,7 @@ export default {
         },
         instances() {
             return [
-                ...(this.lightsailStore.instances || []),
+                ...this.lightsailInstances,
                 ...this.ec2Instances
             ];
         },
@@ -95,14 +94,16 @@ export default {
         async load() {
             this.loading = true;
             try {
-                const [, , ec2Response] = await Promise.all([
+                const [, , lightsailResponse, ec2Response] = await Promise.all([
                     loadAccounts({ refresh: true }),
-                    loadInstances({ refresh: true }),
-                    ec2Api.instances(),
-                    loadConfig({ refresh: true })
+                    loadConfig({ refresh: true }),
+                    instanceApi.lightsail(),
+                    instanceApi.ec2()
                 ]);
+                this.lightsailInstances = lightsailResponse.data.items || lightsailResponse.data || [];
                 this.ec2Instances = ec2Response.data.items || ec2Response.data || [];
             } catch (e) {
+                this.lightsailInstances = [];
                 this.ec2Instances = [];
                 message.error(errorMessage(e, '加载控制台数据失败'));
             } finally {

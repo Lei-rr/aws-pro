@@ -11,6 +11,13 @@ namespace app\controller\concerns;
  */
 trait ResolvesQueryParams
 {
+    protected function stringQuery(string $key, string $default = ''): string
+    {
+        $value = input('get.' . $key, $default);
+
+        return trim((string) ($value === null ? $default : $value));
+    }
+
     /**
      * 读取布尔 query 参数
      *
@@ -18,10 +25,26 @@ trait ResolvesQueryParams
      */
     protected function boolQuery(string $key, bool $default = false): bool
     {
-        $value = strtolower((string) input('get.' . $key, ''));
-        if ($value === '') {
+        return $this->boolInput('get', $key, $default);
+    }
+
+    protected function boolPost(string $key, bool $default = false): bool
+    {
+        return $this->boolInput('post', $key, $default);
+    }
+
+    protected function boolInput(string $source, string $key, bool $default = false): bool
+    {
+        $raw = input($source . '.' . $key, null);
+        if ($raw === null || $raw === '') {
             return $default;
         }
+
+        if (is_bool($raw)) {
+            return $raw;
+        }
+
+        $value = strtolower((string) $raw);
 
         return in_array($value, ['1', 'true', 'on', 'yes'], true) ? true
             : (in_array($value, ['0', 'false', 'off', 'no'], true) ? false : $default);
