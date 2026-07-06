@@ -1,0 +1,35 @@
+export default {
+    name: 'CreateEc2Dialog',
+    props: {
+        visible: { type: Boolean, default: false },
+        loading: { type: Boolean, default: false },
+        creating: { type: Boolean, default: false },
+        accountId: { type: String, default: '' },
+        regionLabel: { type: String, default: '' },
+        form: { type: Object, required: true },
+        options: { type: Object, required: true }
+    },
+    emits: ['update:visible', 'submit'],
+    template: `
+        <a-modal :open="visible" title="创建 EC2 实例" :footer="null" :width="760" @update:open="$emit('update:visible', $event)">
+            <a-spin :spinning="loading">
+                <a-form layout="vertical" @submit.prevent="$emit('submit')">
+                    <a-row :gutter="16">
+                        <a-col :xs="24" :md="12"><a-form-item label="账号"><a-input :value="accountId" disabled /></a-form-item></a-col>
+                        <a-col :xs="24" :md="12"><a-form-item label="实例名称" required><a-input v-model:value="form.name" placeholder="例如 ec2-web" /></a-form-item></a-col>
+                        <a-col :xs="24" :md="12"><a-form-item label="区域"><a-input :value="regionLabel" disabled /></a-form-item></a-col>
+                        <a-col :xs="24" :md="12"><a-form-item label="数量"><a-input-number v-model:value="form.count" :min="1" :max="10" style="width: 100%" /></a-form-item></a-col>
+                        <a-col :xs="24" :md="12"><a-form-item label="AMI" required><a-select v-model:value="form.ami"><a-select-option v-for="(name, key) in options.amis" :key="key" :value="key">{{ name }}</a-select-option></a-select></a-form-item></a-col>
+                        <a-col :xs="24" :md="12"><a-form-item label="实例类型" required><a-select v-model:value="form.instance_type"><a-select-option v-for="(name, key) in options.instance_types" :key="key" :value="key">{{ name }}</a-select-option></a-select></a-form-item></a-col>
+                        <a-col :xs="24" :md="12"><a-form-item label="IPv6"><a-select v-model:value="form.enable_ipv6"><a-select-option :value="true">启用 IPv6（自动处理 VPC/Subnet）</a-select-option><a-select-option :value="false">不启用 IPv6</a-select-option></a-select></a-form-item></a-col>
+                        <a-col :xs="24" :md="12"><a-form-item label="root 密码"><a-input-password v-model:value="form.root_password" placeholder="可选，通过 user-data 注入" /></a-form-item></a-col>
+                    </a-row>
+                    <div class="modal-form-actions-main account-form-actions">
+                        <a-button @click="$emit('update:visible', false)">取消</a-button>
+                        <a-button type="primary" :loading="creating" :disabled="loading" @click="$emit('submit')">创建</a-button>
+                    </div>
+                </a-form>
+            </a-spin>
+        </a-modal>
+    `
+};

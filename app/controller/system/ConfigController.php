@@ -21,11 +21,18 @@ class ConfigController
         if ($type === 'regions') {
             return ApiResponse::data($this->config->get('regions', []));
         }
+        if ($type === 'ec2_regions') {
+            return ApiResponse::data($this->config->get('ec2_regions', []));
+        }
         if ($type === 'blueprints') {
             return ApiResponse::data($this->config->get('blueprints', []));
         }
         if ($type === 'all') {
-            return ApiResponse::data(['regions' => $this->config->get('regions', []), 'blueprints' => $this->config->get('blueprints', [])]);
+            return ApiResponse::data([
+                'regions' => $this->config->get('regions', []),
+                'ec2_regions' => $this->config->get('ec2_regions', []),
+                'blueprints' => $this->config->get('blueprints', []),
+            ]);
         }
 
         throw new ApiException('Invalid config type', 404, 'config_type_invalid', ['type' => $type]);

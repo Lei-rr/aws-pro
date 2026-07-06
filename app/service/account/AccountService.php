@@ -7,13 +7,18 @@ namespace app\service\account;
 use app\event\ProviderUpdatedEvent;
 use app\exception\ApiException;
 use app\repository\AccountRepository;
+use app\repository\Ec2InstanceRepository;
 use app\repository\InstanceRepository;
 use app\support\AwsValidator;
 use app\support\SecretMasker;
 
 class AccountService
 {
-    public function __construct(private readonly AccountRepository $accounts, private readonly InstanceRepository $instances)
+    public function __construct(
+        private readonly AccountRepository $accounts,
+        private readonly InstanceRepository $instances,
+        private readonly Ec2InstanceRepository $ec2Instances,
+    )
     {
     }
 
@@ -66,6 +71,7 @@ class AccountService
 
         $this->accounts->saveAll(array_filter($this->accounts->all(), static fn (array $account): bool => (string) ($account['id'] ?? '') !== $id));
         $this->instances->deleteByAccount($id);
+        $this->ec2Instances->deleteByAccount($id);
         event(new ProviderUpdatedEvent($id, 'delete'));
     }
 
@@ -132,6 +138,7 @@ class AccountService
         $this->accounts->saveAll($accounts);
         if ($id !== $newId) {
             $this->instances->renameAccount($id, $newId);
+            $this->ec2Instances->renameAccount($id, $newId);
         }
 
         return $account;

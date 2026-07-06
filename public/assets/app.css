@@ -137,6 +137,20 @@ body {
     white-space: normal;
 }
 
+.newbie-log-box {
+    height: 360px;
+    margin: 0;
+    padding: 14px;
+    overflow: auto;
+    border-radius: 12px;
+    background: #111827;
+    color: #d1d5db;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 12px;
+    line-height: 1.65;
+    white-space: pre-wrap;
+}
+
 .region-zone-cell {
     display: inline-flex;
     flex-direction: column;

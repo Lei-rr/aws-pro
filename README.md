@@ -1,6 +1,6 @@
 # aws-pro
 
-AWS Lightsail 实例管理面板，集账号管理、实例运维、区域管理、vCPU 配额查询与年度账单于一体。
+AWS 实例管理面板，集账号管理、Lightsail / EC2 实例运维、区域管理、vCPU 配额查询与年度账单于一体。
 
 基于 ThinkPHP 8 + Vue 3（无构建 ESM）。
 
@@ -8,6 +8,8 @@ AWS Lightsail 实例管理面板，集账号管理、实例运维、区域管理
 
 - **账号管理**：多 AWS 账号（Access Key / Secret Key）的增删改查，密钥脱敏展示
 - **Lightsail 实例**：跨账号 / 区域同步实例列表，创建实例，启停 / 重启 / 删除，分配 / 释放静态 IP，开放端口，备注维护
+- **EC2 实例**：同步实例列表，创建实例，启动 / 停止 / 重启 / 终止，开放安全组全端口，创建时支持 IPv6 自动 VPC / Subnet 配置
+- **新手任务**：固定 `us-east-1` 执行 Budget、EC2、Lambda、RDS，可选择全部顺序执行或单项重试，并通过 SSE 输出实时日志
 - **区域管理**：查看账号下已启用区域，按系统白名单启用新区域
 - **配额查询**：查询各区域 vCPU 配额使用情况
 - **账单**：年度费用与抵扣额度统计（基于 AWS Cost Explorer）
@@ -16,7 +18,7 @@ AWS Lightsail 实例管理面板，集账号管理、实例运维、区域管理
 
 - **后端**：PHP 8.0+ / ThinkPHP 8，分层为 controller → service → repository，数据走 JSON 文件存储（无数据库）
 - **前端**：Vue 3 + Vue Router + Pinia + Ant Design Vue，**无构建（原生 ESM）**，浏览器直接加载 `public/assets` 下的源码，改完即生效、无需 npm build
-- **第三方 SDK**：AWS SDK for PHP（Lightsail / Cost Explorer / Service Quotas / Account）
+- **第三方 SDK**：AWS SDK for PHP（Lightsail / EC2 / Budgets / Lambda / RDS / IAM / STS / Cost Explorer / Service Quotas / Account）
 
 ## 数据存储
 
@@ -27,6 +29,8 @@ AWS Lightsail 实例管理面板，集账号管理、实例运维、区域管理
 | `config.json` | 登录凭据（明文，单用户） | 否（含敏感信息） |
 | `accounts.json` | AWS 账号密钥 | 否（含敏感信息） |
 | `instances.json` | Lightsail 实例快照 | 否（运行时数据） |
+| `ec2-instances.json` | EC2 实例快照 | 否（运行时数据） |
+| `newbie-tasks.json` | 新手任务记录 | 否（运行时数据） |
 | `app-config.json` | 区域 / 系统镜像预置配置 | 是 |
 | `config.json.example` | 凭据模板 | 是 |
 

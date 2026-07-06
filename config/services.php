@@ -13,6 +13,8 @@ return [
         'lightsail',
         'lightsail:{providerId}',
         'provider:{providerId}',
+        'ec2',
+        'ec2:{providerId}',
         'lightsail:bundles:{providerId}',
         'lightsail:bundles:{providerId}:*',
         'aws:regions:{providerId}',

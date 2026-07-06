@@ -139,6 +139,8 @@ Provider 不负责：
 
 - `AccountRepository`
 - `InstanceRepository`
+- `Ec2InstanceRepository`
+- `NewbieTaskRepository`
 - `AppConfigRepository`
 - `AwsConfigRepository`
 
@@ -155,6 +157,7 @@ Provider 不负责：
 - `JsonStore`
 - `ApiResponse`
 - `AuthSession`
+- `StreamResponse`
 - `ErrorMessages`
 - `AwsValidator`
 - `SecretMasker`
@@ -167,6 +170,8 @@ Provider 不负责：
 
 - `account`
 - `lightsail`
+- `ec2`
+- `newbie`
 - `region`
 - `quota`
 - `billing`
@@ -269,13 +274,16 @@ Provider 不负责：
   "regions": {
     "ap-northeast-1": "东京"
   },
+  "ec2_regions": {
+    "us-east-1": "弗吉尼亚州"
+  },
   "blueprints": {
     "ubuntu_24_04": "Ubuntu 24.04"
   }
 }
 ```
 
-用途：区域中文名、镜像白名单等应用级只读配置。
+用途：Lightsail 区域中文名、EC2 区域中文名、镜像白名单等应用级只读配置。
 
 ### 12.3 `data/accounts.json`
 
@@ -330,6 +338,55 @@ Provider 不负责：
 1. `bundle_specs` 是结构化规格，不存前端展示文案。
 2. `price` 可以保存，但前端可按场景决定是否展示。
 3. 新增实例字段必须先更新 `InstanceRepository` 的读写白名单。
+
+### 12.5 `data/ec2-instances.json`
+
+```json
+{
+  "items": [
+    {
+      "account_id": "account-id",
+      "region": "us-east-1",
+      "id": "i-1234567890abcdef0",
+      "name": "ec2-web",
+      "state": "running",
+      "instance_type": "t3.micro",
+      "public_ipv4": "1.2.3.4",
+      "public_ipv6": "2600:1f18::1",
+      "private_ipv4": "172.31.0.10",
+      "zone": "us-east-1a",
+      "launched_at": "2026-07-06 12:00:00",
+      "sort_order": 0,
+      "created_at": 1783005976,
+      "updated_at": 1783005976
+    }
+  ]
+}
+```
+
+规则：新增 EC2 实例字段必须先更新 `Ec2InstanceRepository` 的读写白名单。
+
+### 12.6 `data/newbie-tasks.json`
+
+```json
+{
+  "items": [
+    {
+      "id": "a1b2c3d4e5f67890",
+      "account_id": "account-id",
+      "region": "us-east-1",
+      "step": "all",
+      "step_label": "全部任务",
+      "status": "pending",
+      "message": "",
+      "created_at": 1783005976,
+      "updated_at": 1783005976
+    }
+  ]
+}
+```
+
+用途：记录新手任务临时状态，用于 SSE 开始前交接和运行中并发锁；任务结束后立即删除，不持久化完成/失败结果。`step` 支持 `all`、`budget`、`ec2`、`lambda`、`rds`；`all` 按固定顺序执行，单项用于失败后重试。任务执行日志通过 SSE 实时输出，不落盘保存。
 
 ## 13. API Meta 约定
 

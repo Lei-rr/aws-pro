@@ -12,7 +12,7 @@ export const publicRoutes = [
     { path: '/login', component: LoginView },
 ];
 
-export const systemRouteIds = new Set(['', 'accounts', 'lightsail', 'regions', 'quota', 'billing']);
+export const systemRouteIds = new Set(['', 'accounts', 'lightsail', 'ec2', 'newbie', 'regions', 'quota', 'billing']);
 
 export const childRoutes = [
     { path: '', component: DashboardView },

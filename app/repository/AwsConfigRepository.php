@@ -12,7 +12,8 @@ use app\support\JsonStore;
  * 单一存储后端：data/app-config.json，结构：
  *   {
  *     "regions":   { "<region>": "<name>", ... },
- *     "blueprints":{ "<blueprint>": "<name>", ... }
+     *     "ec2_regions": { "<region>": "<name>", ... },
+     *     "blueprints":   { "<blueprint>": "<name>", ... }
  *   }
  *
  * 只读：regions / blueprints 为预置配置，直接手动维护 data/app-config.json，
@@ -26,6 +27,7 @@ class AwsConfigRepository
     {
         $this->store = $store ?? new JsonStore('app-config.json', [
             'regions' => [],
+            'ec2_regions' => [],
             'blueprints' => [],
         ]);
     }
@@ -36,6 +38,7 @@ class AwsConfigRepository
 
         return [
             'regions' => is_array($data['regions'] ?? null) ? $data['regions'] : [],
+            'ec2_regions' => is_array($data['ec2_regions'] ?? null) ? $data['ec2_regions'] : [],
             'blueprints' => is_array($data['blueprints'] ?? null) ? $data['blueprints'] : [],
         ];
     }
