@@ -180,33 +180,41 @@ class Ec2Provider
 
     private function selectIpv6Subnet(Ec2Client $client): string
     {
-        $all = $this->allSubnets($client);
-        $candidates = array_values(array_filter($all, fn (array $subnet): bool => $this->subnetHasIpv6($subnet)));
+        $vpcId = $this->defaultVpcId($client);
+        $subnets = $this->subnets($client, $vpcId);
+        if ($subnets === []) {
+            throw new \RuntimeException('Default VPC has no subnet');
+        }
+        $candidates = array_values(array_filter($subnets, fn (array $subnet): bool => $this->subnetHasIpv6($subnet)));
         if ($candidates !== []) {
             usort($candidates, [$this, 'compareSubnet']);
 
             return (string) ($candidates[0]['SubnetId'] ?? '');
         }
 
-        return $this->ensureDefaultIpv6Subnet($client);
+        return $this->ensureDefaultIpv6Subnet($client, $vpcId, $subnets);
     }
 
-    private function ensureDefaultIpv6Subnet(Ec2Client $client): string
+    private function ensureDefaultIpv6Subnet(Ec2Client $client, string $vpcId, array $subnets): string
     {
-        $vpcId = $this->defaultVpcId($client);
         $vpcIpv6 = $this->ensureVpcIpv6($client, $vpcId);
-        $subnets = $this->subnets($client, $vpcId);
-        if ($subnets === []) {
-            throw new \RuntimeException('Default VPC has no subnet');
-        }
+        usort($subnets, [$this, 'compareSubnet']);
+        $target = $subnets[0] ?? [];
         foreach ($subnets as $subnet) {
             if ($this->subnetHasIpv6($subnet)) {
                 return (string) ($subnet['SubnetId'] ?? '');
             }
+            if (!$this->subnetHasIpv6Association($target) && $this->subnetHasIpv6Association($subnet)) {
+                $target = $subnet;
+            }
         }
-        usort($subnets, [$this, 'compareSubnet']);
-        $subnetId = (string) ($subnets[0]['SubnetId'] ?? '');
-        $client->associateSubnetCidrBlock(['SubnetId' => $subnetId, 'Ipv6CidrBlock' => $this->nextSubnetIpv6Cidr($vpcIpv6, $subnets)]);
+        $subnetId = (string) ($target['SubnetId'] ?? '');
+        if ($subnetId === '') {
+            throw new \RuntimeException('Default VPC has no usable subnet');
+        }
+        if (!$this->subnetHasIpv6Association($target)) {
+            $client->associateSubnetCidrBlock(['SubnetId' => $subnetId, 'Ipv6CidrBlock' => $this->nextSubnetIpv6Cidr($vpcIpv6, $subnets)]);
+        }
         for ($i = 0; $i < 10; $i++) {
             sleep(2);
             $result = $client->describeSubnets(['SubnetIds' => [$subnetId]]);
@@ -226,7 +234,9 @@ class Ec2Provider
         if ($cidr !== '') {
             return $cidr;
         }
-        $client->associateVpcCidrBlock(['VpcId' => $vpcId, 'AmazonProvidedIpv6CidrBlock' => true]);
+        if (!$this->hasVpcIpv6Association($vpc)) {
+            $client->associateVpcCidrBlock(['VpcId' => $vpcId, 'AmazonProvidedIpv6CidrBlock' => true]);
+        }
         for ($i = 0; $i < 10; $i++) {
             sleep(2);
             $cidr = $this->associatedVpcIpv6($this->vpc($client, $vpcId));
@@ -250,8 +260,14 @@ class Ec2Provider
         if ($routeTables === []) {
             $routeTables = $client->describeRouteTables(['Filters' => [['Name' => 'vpc-id', 'Values' => [$vpcId]], ['Name' => 'association.main', 'Values' => ['true']]]])['RouteTables'] ?? [];
         }
+        if ($routeTables === []) {
+            throw new \RuntimeException('VPC has no available route table: ' . $vpcId);
+        }
         $routeTable = $routeTables[0] ?? [];
         $routeTableId = (string) ($routeTable['RouteTableId'] ?? '');
+        if ($routeTableId === '') {
+            throw new \RuntimeException('Route table id is empty for VPC: ' . $vpcId);
+        }
         foreach (($routeTable['Routes'] ?? []) as $route) {
             if (($route['DestinationIpv6CidrBlock'] ?? '') === '::/0' && ($route['GatewayId'] ?? '') === $igw) {
                 return;
@@ -287,15 +303,21 @@ class Ec2Provider
         return $client->describeSubnets(['Filters' => [['Name' => 'vpc-id', 'Values' => [$vpcId]]]])['Subnets'] ?? [];
     }
 
-    private function allSubnets(Ec2Client $client): array
-    {
-        return $client->describeSubnets([])['Subnets'] ?? [];
-    }
-
     private function subnetHasIpv6(array $subnet): bool
     {
         foreach (($subnet['Ipv6CidrBlockAssociationSet'] ?? []) as $association) {
             if (($association['Ipv6CidrBlockState']['State'] ?? '') === 'associated') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function subnetHasIpv6Association(array $subnet): bool
+    {
+        foreach (($subnet['Ipv6CidrBlockAssociationSet'] ?? []) as $association) {
+            if (in_array((string) ($association['Ipv6CidrBlockState']['State'] ?? ''), ['associating', 'associated'], true)) {
                 return true;
             }
         }
@@ -312,6 +334,17 @@ class Ec2Provider
         }
 
         return '';
+    }
+
+    private function hasVpcIpv6Association(array $vpc): bool
+    {
+        foreach (($vpc['Ipv6CidrBlockAssociationSet'] ?? []) as $association) {
+            if (in_array((string) ($association['Ipv6CidrBlockState']['State'] ?? ''), ['associating', 'associated'], true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function nextSubnetIpv6Cidr(string $vpcIpv6, array $subnets): string

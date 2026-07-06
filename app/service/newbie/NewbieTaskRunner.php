@@ -116,7 +116,12 @@ class NewbieTaskRunner
             $running = false;
             for ($i = 0; $i < 40; $i++) {
                 sleep(3);
-                $state = $this->ec2State($client, $id);
+                try {
+                    $state = $this->ec2State($client, $id);
+                } catch (Throwable $exception) {
+                    $log('查询实例状态失败，继续等待：%s', $exception->getMessage());
+                    continue;
+                }
                 if ($state === 'running') {
                     $log('状态：running，任务达成');
                     $running = true;
@@ -129,12 +134,7 @@ class NewbieTaskRunner
             }
         } finally {
             if ($id !== '') {
-                try {
-                    $client->terminateInstances(['InstanceIds' => [$id]]);
-                    $log('实例 %s 已发送终止指令', $id);
-                } catch (Throwable $exception) {
-                    $log('实例 %s 终止失败，请到控制台确认：%s', $id, $exception->getMessage());
-                }
+                $this->terminateEc2Instance($client, $id, $log);
             }
         }
     }
@@ -166,7 +166,12 @@ class NewbieTaskRunner
             $active = false;
             for ($i = 0; $i < 30; $i++) {
                 sleep(2);
-                $function = $lambda->getFunction(['FunctionName' => $functionName]);
+                try {
+                    $function = $lambda->getFunction(['FunctionName' => $functionName]);
+                } catch (Throwable $exception) {
+                    $log('查询 Lambda 状态失败，继续等待：%s', $exception->getMessage());
+                    continue;
+                }
                 $state = (string) ($function['Configuration']['State'] ?? '');
                 if ($state === 'Active') {
                     $active = true;
@@ -177,16 +182,16 @@ class NewbieTaskRunner
             if (!$active) {
                 throw new \RuntimeException('Lambda function did not reach Active state');
             }
-            $lambda->invoke(['FunctionName' => $functionName]);
+            $invoke = $lambda->invoke(['FunctionName' => $functionName]);
+            $statusCode = (int) ($invoke['StatusCode'] ?? 0);
+            $functionError = (string) ($invoke['FunctionError'] ?? '');
+            if ($statusCode < 200 || $statusCode >= 300 || $functionError !== '') {
+                throw new \RuntimeException(sprintf('Lambda invoke failed, status=%d error=%s', $statusCode, $functionError ?: 'none'));
+            }
             $log('Lambda 调用成功，任务达成');
         } finally {
-            try {
-                if ($functionName !== '') {
-                    $lambda->deleteFunction(['FunctionName' => $functionName]);
-                    $log('Lambda 函数 %s 已删除', $functionName);
-                }
-            } catch (Throwable $exception) {
-                $log('Lambda 函数 %s 删除失败，请到控制台确认：%s', $functionName, $exception->getMessage());
+            if ($functionName !== '') {
+                $this->deleteLambdaFunction($lambda, $functionName, $log);
             }
             sleep(3);
             try {
@@ -200,13 +205,70 @@ class NewbieTaskRunner
         }
     }
 
+    private function terminateEc2Instance(Ec2Client $client, string $id, callable $log): void
+    {
+        try {
+            $result = $client->terminateInstances(['InstanceIds' => [$id]]);
+            $state = (string) ($result['TerminatingInstances'][0]['CurrentState']['Name'] ?? '');
+            if (in_array($state, ['shutting-down', 'terminated'], true)) {
+                $log('实例 %s 已进入终止流程，当前状态：%s', $id, $state);
+                return;
+            }
+            $log('实例 %s 已发送终止指令，等待进入终止流程...', $id);
+        } catch (Throwable $exception) {
+            $log('实例 %s 终止指令发送失败，请到控制台确认：%s', $id, $exception->getMessage());
+            return;
+        }
+        for ($i = 0; $i < 10; $i++) {
+            sleep(3);
+            try {
+                $state = $this->ec2State($client, $id);
+            } catch (Throwable $exception) {
+                $log('查询实例终止状态失败，继续等待：%s', $exception->getMessage());
+                continue;
+            }
+            if (in_array($state, ['shutting-down', 'terminated'], true)) {
+                $log('实例 %s 已进入终止流程，当前状态：%s', $id, $state);
+                return;
+            }
+            $log('当前终止状态：%s', $state ?: 'unknown');
+        }
+        $log('实例 %s 终止流程确认超时，请稍后到控制台确认。', $id);
+    }
+
+    private function deleteLambdaFunction(mixed $lambda, string $functionName, callable $log): void
+    {
+        try {
+            $lambda->deleteFunction(['FunctionName' => $functionName]);
+            $log('Lambda 函数 %s 删除指令已接受', $functionName);
+        } catch (Throwable $exception) {
+            if ($this->isLambdaFunctionNotFound($exception)) {
+                $log('Lambda 函数 %s 已不存在', $functionName);
+                return;
+            }
+            $log('Lambda 函数 %s 删除指令发送失败，请到控制台确认：%s', $functionName, $exception->getMessage());
+            return;
+        }
+    }
+
+    private function isLambdaFunctionNotFound(Throwable $exception): bool
+    {
+        if (method_exists($exception, 'getAwsErrorCode') && (string) $exception->getAwsErrorCode() === 'ResourceNotFoundException') {
+            return true;
+        }
+        $message = strtolower($exception->getMessage());
+
+        return str_contains($message, 'resourcenotfoundexception') || str_contains($message, 'function not found');
+    }
+
     private function taskRds(array $account, callable $log): void
     {
         $rds = $this->clients->rds($account, self::REGION);
         $dbName = 'db-' . $this->randomString(6);
         $created = false;
+        $available = false;
         try {
-            $rds->createDBInstance([
+            $result = $rds->createDBInstance([
                 'DBInstanceIdentifier' => $dbName,
                 'DBInstanceClass' => 'db.t3.micro',
                 'Engine' => 'mysql',
@@ -215,12 +277,20 @@ class NewbieTaskRunner
                 'AllocatedStorage' => 20,
                 'BackupRetentionPeriod' => 0,
             ]);
+            $returnedId = (string) ($result['DBInstance']['DBInstanceIdentifier'] ?? '');
+            if ($returnedId === '') {
+                throw new \RuntimeException('RDS CreateDBInstance returned empty instance id');
+            }
             $created = true;
             $log('数据库 %s 正在创建，等待 available...', $dbName);
-            $available = false;
             for ($i = 0; $i < 30; $i++) {
                 sleep(30);
-                $status = $this->rdsStatus($rds, $dbName);
+                try {
+                    $status = $this->rdsStatus($rds, $dbName);
+                } catch (Throwable $exception) {
+                    $log('查询数据库状态失败，继续等待：%s', $exception->getMessage());
+                    continue;
+                }
                 $log('当前状态：%s', $status ?: 'unknown');
                 if ($status === 'available') {
                     $log('数据库已就绪，任务达成');
@@ -229,12 +299,15 @@ class NewbieTaskRunner
                 }
             }
             if (!$available) {
-                throw new \RuntimeException('RDS instance did not reach available state');
+                $log('等待超时，数据库可能仍在创建中，接下来继续自动清理。');
             }
         } finally {
             if ($created) {
                 $this->cleanupRds($rds, $dbName, $log);
             }
+        }
+        if (!$available) {
+            throw new \RuntimeException('RDS instance did not reach available state');
         }
     }
 
@@ -264,25 +337,39 @@ class NewbieTaskRunner
     private function cleanupRds(mixed $rds, string $dbName, callable $log): void
     {
         $log('开始清理数据库 %s ...', $dbName);
-        for ($i = 0; $i < 24; $i++) {
+        $deleteRequested = false;
+        for ($i = 0; $i < 12; $i++) {
             try {
                 $status = $this->rdsStatus($rds, $dbName);
                 if ($status === '') {
                     $log('数据库 %s 已删除', $dbName);
                     return;
                 }
-                if ($status !== 'deleting') {
-                    $rds->deleteDBInstance([
-                        'DBInstanceIdentifier' => $dbName,
-                        'SkipFinalSnapshot' => true,
-                        'DeleteAutomatedBackups' => true,
-                    ]);
-                    $log('删除指令已发送，当前状态：%s', $status);
+                if ($status === 'deleting') {
+                    $log('数据库 %s 已进入删除流程，当前状态：%s', $dbName, $status);
+                    return;
+                }
+                if (!$deleteRequested) {
+                    try {
+                        $rds->deleteDBInstance([
+                            'DBInstanceIdentifier' => $dbName,
+                            'SkipFinalSnapshot' => true,
+                            'DeleteAutomatedBackups' => true,
+                        ]);
+                        $deleteRequested = true;
+                        $log('删除指令已发送，当前状态：%s', $status);
+                    } catch (Throwable $exception) {
+                        if (!$this->isRdsDeleteRetryable($exception)) {
+                            $log('自动删除数据库失败：%s', $exception->getMessage());
+                            return;
+                        }
+                        $log('当前状态 %s 暂时不能删除，稍后重试。', $status);
+                    }
                 } else {
-                    $log('删除进行中，当前状态：%s', $status);
+                    $log('等待进入删除流程，当前状态：%s', $status);
                 }
             } catch (Throwable $exception) {
-                if (str_contains(strtolower($exception->getMessage()), 'dbinstancenotfound')) {
+                if ($this->isRdsInstanceNotFound($exception)) {
                     $log('数据库 %s 已删除', $dbName);
                     return;
                 }
@@ -290,7 +377,25 @@ class NewbieTaskRunner
             }
             sleep(30);
         }
-        $log('数据库清理重试超时，请稍后到控制台确认是否已删除');
+        $log('数据库删除流程确认超时，请稍后到控制台确认。');
+    }
+
+    private function isRdsInstanceNotFound(Throwable $exception): bool
+    {
+        $message = strtolower($exception->getMessage());
+
+        return str_contains($message, 'dbinstancenotfound') || str_contains($message, 'db instance not found');
+    }
+
+    private function isRdsDeleteRetryable(Throwable $exception): bool
+    {
+        $message = strtolower($exception->getMessage());
+
+        return str_contains($message, 'invaliddbinstancestate')
+            || str_contains($message, 'is not in available state')
+            || str_contains($message, 'is not in deleting state')
+            || str_contains($message, 'cannot delete')
+            || str_contains($message, 'creating');
     }
 
     private function accountId(array $account): string
