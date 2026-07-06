@@ -113,14 +113,4 @@ class NewbieTaskRepository
         });
     }
 
-    public function hasRunning(): bool
-    {
-        foreach ($this->all() as $task) {
-            if (in_array((string) ($task['status'] ?? ''), ['pending', 'running'], true) && time() - (int) ($task['updated_at'] ?? 0) < 7200) {
-                return true;
-            }
-        }
-
-        return false;
-    }
 }

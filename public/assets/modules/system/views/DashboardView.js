@@ -2,6 +2,7 @@ import { regionName } from '../../../shared/utils/format.js';
 import { errorMessage } from '../../../shared/utils/errors.js';
 import { message } from '../../../shared/plugins/antDesignVue.js';
 import { loadAccounts, useAccountStore } from '../../accounts/store.js';
+import { ec2Api } from '../../ec2/api.js';
 import { loadConfig, useConfigStore } from '../store/config.js';
 import { loadInstances, useLightsailStore } from '../../lightsail/store.js';
 
@@ -9,7 +10,8 @@ export default {
     name: 'DashboardView',
     data() {
         return {
-            loading: false
+            loading: false,
+            ec2Instances: []
         };
     },
     setup() {
@@ -24,10 +26,16 @@ export default {
             return this.accountStore.accounts || [];
         },
         instances() {
-            return this.lightsailStore.instances || [];
+            return [
+                ...(this.lightsailStore.instances || []),
+                ...this.ec2Instances
+            ];
         },
         regions() {
-            return this.configStore.config?.regions || {};
+            return {
+                ...(this.configStore.config?.regions || {}),
+                ...(this.configStore.config?.ec2_regions || {})
+            };
         },
         runningCount() {
             return this.instances.filter((item) => item.state === 'running').length;
@@ -87,12 +95,15 @@ export default {
         async load() {
             this.loading = true;
             try {
-                await Promise.all([
+                const [, , ec2Response] = await Promise.all([
                     loadAccounts({ refresh: true }),
                     loadInstances({ refresh: true }),
+                    ec2Api.instances(),
                     loadConfig({ refresh: true })
                 ]);
+                this.ec2Instances = ec2Response.data.items || ec2Response.data || [];
             } catch (e) {
+                this.ec2Instances = [];
                 message.error(errorMessage(e, '加载控制台数据失败'));
             } finally {
                 this.loading = false;

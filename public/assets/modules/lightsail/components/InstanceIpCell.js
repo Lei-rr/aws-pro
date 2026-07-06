@@ -1,4 +1,4 @@
-import CopyButton from './CopyButton.js';
+import CopyButton from '../../../shared/components/CopyButton.js';
 
 export default {
     name: 'InstanceIpCell',

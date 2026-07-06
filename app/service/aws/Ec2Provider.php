@@ -77,23 +77,23 @@ class Ec2Provider
                 }
             }
 
-            $this->retryAws('run EC2 instance', fn (): mixed => $client->runInstances($input));
+            AwsRetry::run('run EC2 instance', fn (): mixed => $client->runInstances($input));
         });
     }
 
     public function startInstance(array $account, string $region, string $id): void
     {
-        $this->call('ec2.start_instance', fn (): mixed => $this->retryAws('start EC2 instance', fn (): mixed => $this->client($account, $region)->startInstances(['InstanceIds' => [$id]])));
+        $this->call('ec2.start_instance', fn (): mixed => AwsRetry::run('start EC2 instance', fn (): mixed => $this->client($account, $region)->startInstances(['InstanceIds' => [$id]])));
     }
 
     public function stopInstance(array $account, string $region, string $id): void
     {
-        $this->call('ec2.stop_instance', fn (): mixed => $this->retryAws('stop EC2 instance', fn (): mixed => $this->client($account, $region)->stopInstances(['InstanceIds' => [$id]])));
+        $this->call('ec2.stop_instance', fn (): mixed => AwsRetry::run('stop EC2 instance', fn (): mixed => $this->client($account, $region)->stopInstances(['InstanceIds' => [$id]])));
     }
 
     public function rebootInstance(array $account, string $region, string $id): void
     {
-        $this->call('ec2.reboot_instance', fn (): mixed => $this->retryAws('reboot EC2 instance', fn (): mixed => $this->client($account, $region)->rebootInstances(['InstanceIds' => [$id]])));
+        $this->call('ec2.reboot_instance', fn (): mixed => AwsRetry::run('reboot EC2 instance', fn (): mixed => $this->client($account, $region)->rebootInstances(['InstanceIds' => [$id]])));
     }
 
     public function terminateInstance(array $account, string $region, string $id): void
@@ -105,7 +105,7 @@ class Ec2Provider
             } catch (Throwable $exception) {
                 throw new \RuntimeException('Elastic IP cleanup failed; instance was not terminated: ' . $exception->getMessage(), 0, $exception);
             }
-            $this->retryAws('terminate EC2 instance', fn (): mixed => $client->terminateInstances(['InstanceIds' => [$id]]));
+            AwsRetry::run('terminate EC2 instance', fn (): mixed => $client->terminateInstances(['InstanceIds' => [$id]]));
         });
     }
 
@@ -144,13 +144,13 @@ class Ec2Provider
             if ($this->elasticIpForInstance($client, $id) !== null) {
                 return;
             }
-            $allocation = $this->retryAws('allocate EC2 Elastic IP', fn (): mixed => $client->allocateAddress(['Domain' => 'vpc']));
+            $allocation = AwsRetry::run('allocate EC2 Elastic IP', fn (): mixed => $client->allocateAddress(['Domain' => 'vpc']));
             $allocationId = (string) ($allocation['AllocationId'] ?? '');
             if ($allocationId === '') {
                 throw new \RuntimeException('EC2 AllocateAddress returned empty allocation id');
             }
             try {
-                $this->retryAws('associate EC2 Elastic IP', fn (): mixed => $client->associateAddress(['InstanceId' => $id, 'AllocationId' => $allocationId]));
+                AwsRetry::run('associate EC2 Elastic IP', fn (): mixed => $client->associateAddress(['InstanceId' => $id, 'AllocationId' => $allocationId]));
             } catch (Throwable $exception) {
                 $this->safeReleaseAddress($client, $allocationId);
                 throw $exception;
@@ -251,7 +251,7 @@ class Ec2Provider
             throw new \RuntimeException('Default VPC has no usable subnet');
         }
         if (!$this->subnetHasIpv6Association($target)) {
-            $client->associateSubnetCidrBlock(['SubnetId' => $subnetId, 'Ipv6CidrBlock' => $this->nextSubnetIpv6Cidr($vpcIpv6, $subnets)]);
+            AwsRetry::run('associate EC2 subnet IPv6 CIDR', fn (): mixed => $client->associateSubnetCidrBlock(['SubnetId' => $subnetId, 'Ipv6CidrBlock' => $this->nextSubnetIpv6Cidr($vpcIpv6, $subnets)]));
         }
         for ($i = 0; $i < 10; $i++) {
             sleep(2);
@@ -273,7 +273,7 @@ class Ec2Provider
             return $cidr;
         }
         if (!$this->hasVpcIpv6Association($vpc)) {
-            $client->associateVpcCidrBlock(['VpcId' => $vpcId, 'AmazonProvidedIpv6CidrBlock' => true]);
+            AwsRetry::run('associate EC2 VPC IPv6 CIDR', fn (): mixed => $client->associateVpcCidrBlock(['VpcId' => $vpcId, 'AmazonProvidedIpv6CidrBlock' => true]));
         }
         for ($i = 0; $i < 10; $i++) {
             sleep(2);
@@ -311,13 +311,11 @@ class Ec2Provider
                 return;
             }
         }
-        try {
-            $client->createRoute(['RouteTableId' => $routeTableId, 'DestinationIpv6CidrBlock' => '::/0', 'GatewayId' => $igw]);
-        } catch (Throwable $exception) {
-            if (!$this->isDuplicateAwsError($exception, ['RouteAlreadyExists', 'InvalidRoute.Duplicate'])) {
-                throw $exception;
-            }
-        }
+        AwsRetry::run(
+            'create EC2 IPv6 default route',
+            fn (): mixed => $client->createRoute(['RouteTableId' => $routeTableId, 'DestinationIpv6CidrBlock' => '::/0', 'GatewayId' => $igw]),
+            ['RouteAlreadyExists', 'InvalidRoute.Duplicate'],
+        );
     }
 
     private function defaultVpcId(Ec2Client $client): string
@@ -478,18 +476,11 @@ class Ec2Provider
 
     private function authorizeSecurityGroup(Ec2Client $client, string $method, string $groupId, array $permissions): void
     {
-        try {
-            $client->{$method}(['GroupId' => $groupId, 'IpPermissions' => $permissions]);
-        } catch (Throwable $exception) {
-            if (!$this->isDuplicateAwsError($exception, ['InvalidPermission.Duplicate'])) {
-                throw $exception;
-            }
-        }
-    }
-
-    private function isDuplicateAwsError(Throwable $exception, array $codes): bool
-    {
-        return method_exists($exception, 'getAwsErrorCode') && in_array((string) $exception->getAwsErrorCode(), $codes, true);
+        AwsRetry::run(
+            $method . ' EC2 security group',
+            fn (): mixed => $client->{$method}(['GroupId' => $groupId, 'IpPermissions' => $permissions]),
+            ['InvalidPermission.Duplicate'],
+        );
     }
 
     private function elasticIpsByInstance(Ec2Client $client): array
@@ -525,7 +516,7 @@ class Ec2Provider
         }
         $associationId = (string) ($address['AssociationId'] ?? '');
         if ($associationId !== '') {
-            $this->retryAws('disassociate EC2 Elastic IP', fn (): mixed => $client->disassociateAddress(['AssociationId' => $associationId]), ['InvalidAssociationID.NotFound']);
+            AwsRetry::run('disassociate EC2 Elastic IP', fn (): mixed => $client->disassociateAddress(['AssociationId' => $associationId]), ['InvalidAssociationID.NotFound']);
             $this->waitAddressDisassociated($client, (string) ($address['AllocationId'] ?? ''), $id);
         }
         $allocationId = (string) ($address['AllocationId'] ?? '');
@@ -539,7 +530,7 @@ class Ec2Provider
         if ($allocationId === '') {
             return;
         }
-        $this->retryAws('release EC2 Elastic IP', fn (): mixed => $client->releaseAddress(['AllocationId' => $allocationId]), ['InvalidAllocationID.NotFound']);
+        AwsRetry::run('release EC2 Elastic IP', fn (): mixed => $client->releaseAddress(['AllocationId' => $allocationId]), ['InvalidAllocationID.NotFound']);
     }
 
     private function waitAddressDisassociated(Ec2Client $client, string $allocationId, string $id): void
@@ -551,7 +542,7 @@ class Ec2Provider
             try {
                 $addresses = $client->describeAddresses(['AllocationIds' => [$allocationId]])['Addresses'] ?? [];
             } catch (Throwable $exception) {
-                if ($this->isAwsError($exception, ['InvalidAllocationID.NotFound'])) {
+                if (AwsRetry::isAwsError($exception, ['InvalidAllocationID.NotFound'])) {
                     return;
                 }
                 throw $exception;
@@ -565,42 +556,6 @@ class Ec2Provider
         }
 
         throw new \RuntimeException('EC2 Elastic IP did not detach from instance: ' . $id);
-    }
-
-    private function retryAws(string $action, callable $callback, array $successCodes = []): mixed
-    {
-        $last = null;
-        for ($attempt = 0; $attempt < 5; $attempt++) {
-            try {
-                return $callback();
-            } catch (Throwable $exception) {
-                if ($this->isAwsError($exception, $successCodes)) {
-                    return null;
-                }
-                $last = $exception;
-                if (!$this->isRetryableAwsError($exception) || $attempt === 4) {
-                    break;
-                }
-                usleep((int) (400000 * (1 + $attempt * 0.5)));
-            }
-        }
-
-        throw new \RuntimeException($action . ' failed: ' . ($last?->getMessage() ?? 'unknown error'), 0, $last);
-    }
-
-    private function isRetryableAwsError(Throwable $exception): bool
-    {
-        if (method_exists($exception, 'getStatusCode') && (int) $exception->getStatusCode() >= 500) {
-            return true;
-        }
-        $code = method_exists($exception, 'getAwsErrorCode') ? (string) $exception->getAwsErrorCode() : '';
-
-        return in_array($code, ['RequestLimitExceeded', 'Throttling', 'ThrottlingException', 'ServiceUnavailable', 'InternalError'], true);
-    }
-
-    private function isAwsError(Throwable $exception, array $codes): bool
-    {
-        return method_exists($exception, 'getAwsErrorCode') && in_array((string) $exception->getAwsErrorCode(), $codes, true);
     }
 
     private function instanceView(array $account, string $region, array $instance, array $staticIps): array

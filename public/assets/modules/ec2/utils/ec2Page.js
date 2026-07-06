@@ -151,6 +151,11 @@ export const ec2Methods = {
         }
     },
     operate(row, action) {
+        if (this.syncing) {
+            message.warning('已有同步任务正在进行');
+            return;
+        }
+
         if (action === 'remark') {
             this.openRemark(row);
             return;

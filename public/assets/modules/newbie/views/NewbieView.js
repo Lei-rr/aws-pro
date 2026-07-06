@@ -106,14 +106,6 @@ export default {
                 this.closeStream();
             };
         },
-        async refreshTask(taskId) {
-            try {
-                const response = await newbieApi.task(taskId);
-                this.task = response.data;
-            } catch (e) {
-                message.error(errorMessage(e, '刷新任务状态失败'));
-            }
-        },
         closeStream() {
             if (this.eventSource) {
                 this.eventSource.close();

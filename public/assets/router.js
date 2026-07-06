@@ -1,9 +1,14 @@
 import { moduleChildRoutes, modulePublicRoutes } from './modules/manifest.js'
-import { systemRouteIds, systemRoutes } from './modules/system/routes.js'
+import { systemRoutes } from './modules/system/routes.js'
 import { authApi } from './modules/system/api/auth.js'
 import { message } from './shared/plugins/antDesignVue.js'
 
 const { createRouter, createWebHashHistory } = VueRouter
+
+const protectedPaths = new Set([
+  '/',
+  ...moduleChildRoutes.map((route) => `/${String(route.path || '').replace(/^\/+/, '')}`),
+])
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -18,7 +23,9 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
-  if (to.path === '/login') return true
+  const normalizedPath = to.path.replace(/\/+$/, '') || '/'
+  if (to.path !== normalizedPath) return { path: normalizedPath, query: to.query, hash: to.hash }
+  if (normalizedPath === '/login') return true
 
   try {
     await authApi.me()
@@ -26,8 +33,7 @@ router.beforeEach(async (to) => {
     return '/login'
   }
 
-  const first = to.path.split('/').filter(Boolean)[0] || ''
-  if (systemRouteIds.has(first)) return true
+  if (protectedPaths.has(normalizedPath)) return true
 
   message.warning('页面不存在或不可用')
   return '/'

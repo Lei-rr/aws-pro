@@ -20,20 +20,6 @@ class BillingService
     }
 
     /**
-     * 处理列表查询参数：trim + account_id 校验
-     *
-     * @return array{account_id: string|null}
-     */
-    public function listFilters(array $filters): array
-    {
-        $accountId = trim((string) ($filters['account_id'] ?? ''));
-
-        return [
-            'account_id' => $accountId !== '' ? AwsValidator::accountId($accountId) : null,
-        ];
-    }
-
-    /**
      * 年度成本与积分汇总
      *
      * 包含参数校验、数据拉取、总值聚合
