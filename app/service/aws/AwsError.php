@@ -17,9 +17,11 @@ class AwsError
         }
 
         if (!$exception instanceof AwsException) {
-            return new ApiException('AWS request failed', 502, 'aws_request_failed', [
+            $message = $exception->getMessage() !== '' ? $exception->getMessage() : 'AWS request failed';
+
+            return new ApiException($message, 502, 'aws_request_failed', [
                 'operation' => $operation,
-                'reason' => $exception->getMessage(),
+                'reason' => $message,
             ]);
         }
 

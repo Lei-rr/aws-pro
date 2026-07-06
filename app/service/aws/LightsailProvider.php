@@ -47,7 +47,7 @@ class LightsailProvider
                 $input['userData'] = $this->rootPasswordUserData((string) $data['root_password']);
             }
 
-            $this->client($account, $region)->createInstances($input);
+            $this->retryAws('create Lightsail instance', fn (): mixed => $this->client($account, $region)->createInstances($input));
         });
     }
 
@@ -92,8 +92,13 @@ class LightsailProvider
         $this->call('lightsail.allocate_static_ip', function () use ($account, $region, $instanceName): void {
             $client = $this->client($account, $region);
             $staticIpName = 'sip-' . preg_replace('/[^A-Za-z0-9-]/', '-', $instanceName) . '-' . time();
-            $client->allocateStaticIp(['staticIpName' => $staticIpName]);
-            $client->attachStaticIp(['staticIpName' => $staticIpName, 'instanceName' => $instanceName]);
+            $this->retryAws('allocate Lightsail static IP', fn (): mixed => $client->allocateStaticIp(['staticIpName' => $staticIpName]));
+            try {
+                $this->retryAws('attach Lightsail static IP', fn (): mixed => $client->attachStaticIp(['staticIpName' => $staticIpName, 'instanceName' => $instanceName]));
+            } catch (Throwable $exception) {
+                $this->safeReleaseStaticIp($client, $staticIpName);
+                throw $exception;
+            }
         });
     }
 
@@ -105,38 +110,42 @@ class LightsailProvider
             if ($staticIpName === '') {
                 return;
             }
-            $client->detachStaticIp(['staticIpName' => $staticIpName]);
+            $this->retryAws('detach Lightsail static IP', fn (): mixed => $client->detachStaticIp(['staticIpName' => $staticIpName]));
             $this->waitStaticIpDetached($client, $staticIpName);
-            $client->releaseStaticIp(['staticIpName' => $staticIpName]);
+            $this->safeReleaseStaticIp($client, $staticIpName);
         });
     }
 
     public function startInstance(array $account, string $region, string $instanceName): void
     {
-        $this->call('lightsail.start_instance', fn (): mixed => $this->client($account, $region)->startInstance(['instanceName' => $instanceName]));
+        $this->call('lightsail.start_instance', fn (): mixed => $this->retryAws('start Lightsail instance', fn (): mixed => $this->client($account, $region)->startInstance(['instanceName' => $instanceName])));
     }
 
     public function stopInstance(array $account, string $region, string $instanceName): void
     {
-        $this->call('lightsail.stop_instance', fn (): mixed => $this->client($account, $region)->stopInstance(['instanceName' => $instanceName]));
+        $this->call('lightsail.stop_instance', fn (): mixed => $this->retryAws('stop Lightsail instance', fn (): mixed => $this->client($account, $region)->stopInstance(['instanceName' => $instanceName])));
     }
 
     public function rebootInstance(array $account, string $region, string $instanceName): void
     {
-        $this->call('lightsail.reboot_instance', fn (): mixed => $this->client($account, $region)->rebootInstance(['instanceName' => $instanceName]));
+        $this->call('lightsail.reboot_instance', fn (): mixed => $this->retryAws('reboot Lightsail instance', fn (): mixed => $this->client($account, $region)->rebootInstance(['instanceName' => $instanceName])));
     }
 
     public function deleteInstance(array $account, string $region, string $instanceName): void
     {
         $this->call('lightsail.delete_instance', function () use ($account, $region, $instanceName): void {
-            $this->releaseStaticIp($account, $region, $instanceName);
-            $this->client($account, $region)->deleteInstance(['instanceName' => $instanceName]);
+            try {
+                $this->releaseStaticIp($account, $region, $instanceName);
+            } catch (Throwable $exception) {
+                throw new \RuntimeException('Static IP cleanup failed; instance was not deleted: ' . $exception->getMessage(), 0, $exception);
+            }
+            $this->retryAws('delete Lightsail instance', fn (): mixed => $this->client($account, $region)->deleteInstance(['instanceName' => $instanceName]));
         });
     }
 
     public function openAllPorts(array $account, string $region, string $instanceName): void
     {
-        $this->call('lightsail.open_all_ports', fn (): mixed => $this->client($account, $region)->openInstancePublicPorts(['instanceName' => $instanceName, 'portInfo' => ['fromPort' => 0, 'toPort' => 65535, 'protocol' => 'all']]));
+        $this->call('lightsail.open_all_ports', fn (): mixed => $this->retryAws('open Lightsail ports', fn (): mixed => $this->client($account, $region)->openInstancePublicPorts(['instanceName' => $instanceName, 'portInfo' => ['fromPort' => 0, 'toPort' => 65535, 'protocol' => 'all']])));
     }
 
     private function client(array $account, string $region): LightsailClient
@@ -157,7 +166,7 @@ class LightsailProvider
 
     private function waitStaticIpDetached(mixed $client, string $staticIpName): void
     {
-        for ($i = 0; $i < 10; $i++) {
+        for ($i = 0; $i < 20; $i++) {
             try {
                 $ip = $client->getStaticIp(['staticIpName' => $staticIpName])['staticIp'] ?? [];
                 if (empty($ip['isAttached']) || empty($ip['attachedTo'])) {
@@ -168,6 +177,52 @@ class LightsailProvider
             }
             sleep(2);
         }
+
+        throw new \RuntimeException('Lightsail static IP did not detach: ' . $staticIpName);
+    }
+
+    private function safeReleaseStaticIp(mixed $client, string $staticIpName): void
+    {
+        if ($staticIpName === '') {
+            return;
+        }
+        $this->retryAws('release Lightsail static IP', fn (): mixed => $client->releaseStaticIp(['staticIpName' => $staticIpName]), ['NotFoundException']);
+    }
+
+    private function retryAws(string $action, callable $callback, array $successCodes = []): mixed
+    {
+        $last = null;
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            try {
+                return $callback();
+            } catch (Throwable $exception) {
+                if ($this->isAwsError($exception, $successCodes)) {
+                    return null;
+                }
+                $last = $exception;
+                if (!$this->isRetryableAwsError($exception) || $attempt === 4) {
+                    break;
+                }
+                usleep((int) (400000 * (1 + $attempt * 0.5)));
+            }
+        }
+
+        throw new \RuntimeException($action . ' failed: ' . ($last?->getMessage() ?? 'unknown error'), 0, $last);
+    }
+
+    private function isRetryableAwsError(Throwable $exception): bool
+    {
+        if (method_exists($exception, 'getStatusCode') && (int) $exception->getStatusCode() >= 500) {
+            return true;
+        }
+        $code = method_exists($exception, 'getAwsErrorCode') ? (string) $exception->getAwsErrorCode() : '';
+
+        return in_array($code, ['RequestLimitExceeded', 'Throttling', 'ThrottlingException', 'ServiceUnavailableException', 'InternalError'], true);
+    }
+
+    private function isAwsError(Throwable $exception, array $codes): bool
+    {
+        return method_exists($exception, 'getAwsErrorCode') && in_array((string) $exception->getAwsErrorCode(), $codes, true);
     }
 
     private function rootPasswordUserData(string $password): string

@@ -35,12 +35,21 @@ export function ec2State() {
 
 function emptyCreateForm() {
     return {
+        client_token: createClientToken(),
         name: '',
         ami: 'ubuntu-24.04',
         instance_type: 't3.micro',
         enable_ipv6: true,
         root_password: ''
     };
+}
+
+function createClientToken() {
+    if (globalThis.crypto?.randomUUID) {
+        return globalThis.crypto.randomUUID();
+    }
+
+    return `ec2-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`;
 }
 
 export const ec2Computed = {

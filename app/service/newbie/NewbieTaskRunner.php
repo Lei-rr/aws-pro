@@ -213,8 +213,7 @@ class NewbieTaskRunner
             sleep(3);
             try {
                 if ($roleName !== '') {
-                    $iam->deleteRole(['RoleName' => $roleName]);
-                    $log('IAM 角色 %s 已删除', $roleName);
+                    $this->deleteIamRole($iam, $roleName, $log);
                 }
             } catch (Throwable $exception) {
                 $log('IAM 角色 %s 删除失败，请到控制台确认：%s', $roleName, $exception->getMessage());
@@ -227,30 +226,30 @@ class NewbieTaskRunner
         try {
             $result = $client->terminateInstances(['InstanceIds' => [$id]]);
             $state = (string) ($result['TerminatingInstances'][0]['CurrentState']['Name'] ?? '');
-            if (in_array($state, ['shutting-down', 'terminated'], true)) {
-                $log('实例 %s 已进入终止流程，当前状态：%s', $id, $state);
-                return;
-            }
-            $log('实例 %s 已发送终止指令，等待进入终止流程...', $id);
+            $log('实例 %s 已发送终止指令，当前状态：%s', $id, $state ?: 'unknown');
         } catch (Throwable $exception) {
             $log('实例 %s 终止指令发送失败，请到控制台确认：%s', $id, $exception->getMessage());
             return;
         }
-        for ($i = 0; $i < 10; $i++) {
+        for ($i = 0; $i < 80; $i++) {
             sleep(3);
             try {
                 $state = $this->ec2State($client, $id);
             } catch (Throwable $exception) {
+                if ($this->isEc2InstanceNotFound($exception)) {
+                    $log('实例 %s 已删除', $id);
+                    return;
+                }
                 $log('查询实例终止状态失败，继续等待：%s', $exception->getMessage());
                 continue;
             }
-            if (in_array($state, ['shutting-down', 'terminated'], true)) {
-                $log('实例 %s 已进入终止流程，当前状态：%s', $id, $state);
+            if ($state === 'terminated') {
+                $log('实例 %s 已彻底终止', $id);
                 return;
             }
             $log('当前终止状态：%s', $state ?: 'unknown');
         }
-        $log('实例 %s 终止流程确认超时，请稍后到控制台确认。', $id);
+        $log('实例 %s 彻底终止确认超时，请稍后到控制台确认。', $id);
     }
 
     private function deleteLambdaFunction(mixed $lambda, string $functionName, callable $log): void
@@ -266,6 +265,20 @@ class NewbieTaskRunner
             $log('Lambda 函数 %s 删除指令发送失败，请到控制台确认：%s', $functionName, $exception->getMessage());
             return;
         }
+        for ($i = 0; $i < 30; $i++) {
+            sleep(2);
+            try {
+                $lambda->getFunction(['FunctionName' => $functionName]);
+                $log('等待 Lambda 函数 %s 删除完成...', $functionName);
+            } catch (Throwable $exception) {
+                if ($this->isLambdaFunctionNotFound($exception)) {
+                    $log('Lambda 函数 %s 已删除', $functionName);
+                    return;
+                }
+                $log('查询 Lambda 删除状态失败，继续等待：%s', $exception->getMessage());
+            }
+        }
+        $log('Lambda 函数 %s 删除确认超时，请稍后到控制台确认。', $functionName);
     }
 
     private function isLambdaFunctionNotFound(Throwable $exception): bool
@@ -477,7 +490,7 @@ class NewbieTaskRunner
     {
         $log('开始清理数据库 %s ...', $dbName);
         $deleteRequested = false;
-        for ($i = 0; $i < 12; $i++) {
+        for ($i = 0; $i < 36; $i++) {
             try {
                 $status = $this->rdsStatus($rds, $dbName);
                 if ($status === '') {
@@ -485,8 +498,9 @@ class NewbieTaskRunner
                     return;
                 }
                 if ($status === 'deleting') {
-                    $log('数据库 %s 已进入删除流程，当前状态：%s', $dbName, $status);
-                    return;
+                    $log('数据库 %s 删除中，当前状态：%s', $dbName, $status);
+                    sleep(30);
+                    continue;
                 }
                 if (!$deleteRequested) {
                     try {
@@ -504,8 +518,6 @@ class NewbieTaskRunner
                         }
                         $log('当前状态 %s 暂时不能删除，稍后重试。', $status);
                     }
-                } else {
-                    $log('等待进入删除流程，当前状态：%s', $status);
                 }
             } catch (Throwable $exception) {
                 if ($this->isRdsInstanceNotFound($exception)) {
@@ -516,7 +528,49 @@ class NewbieTaskRunner
             }
             sleep(30);
         }
-        $log('数据库删除流程确认超时，请稍后到控制台确认。');
+        $log('数据库彻底删除确认超时，请稍后到控制台确认。');
+    }
+
+    private function deleteIamRole(mixed $iam, string $roleName, callable $log): void
+    {
+        try {
+            $iam->deleteRole(['RoleName' => $roleName]);
+            $log('IAM 角色 %s 删除指令已接受', $roleName);
+        } catch (Throwable $exception) {
+            if ($this->isIamRoleNotFound($exception)) {
+                $log('IAM 角色 %s 已删除', $roleName);
+                return;
+            }
+            throw $exception;
+        }
+        for ($i = 0; $i < 30; $i++) {
+            sleep(2);
+            try {
+                $iam->getRole(['RoleName' => $roleName]);
+                $log('等待 IAM 角色 %s 删除完成...', $roleName);
+            } catch (Throwable $exception) {
+                if ($this->isIamRoleNotFound($exception)) {
+                    $log('IAM 角色 %s 已删除', $roleName);
+                    return;
+                }
+                $log('查询 IAM 角色删除状态失败，继续等待：%s', $exception->getMessage());
+            }
+        }
+        $log('IAM 角色 %s 删除确认超时，请稍后到控制台确认。', $roleName);
+    }
+
+    private function isEc2InstanceNotFound(Throwable $exception): bool
+    {
+        $message = strtolower($exception->getMessage());
+
+        return str_contains($message, 'invalidinstanceid.notfound') || str_contains($message, 'instance id does not exist');
+    }
+
+    private function isIamRoleNotFound(Throwable $exception): bool
+    {
+        $message = strtolower($exception->getMessage());
+
+        return str_contains($message, 'nosuchentity') || str_contains($message, 'role not found') || str_contains($message, 'not found');
     }
 
     private function isRdsInstanceNotFound(Throwable $exception): bool

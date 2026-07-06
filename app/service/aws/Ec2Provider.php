@@ -33,7 +33,7 @@ class Ec2Provider
                 }
                 $params['NextToken'] = (string) ($result['NextToken'] ?? '');
             } while ($params['NextToken'] !== '');
-            usort($items, static fn (array $a, array $b): int => [($a['zone'] ?? ''), ($a['id'] ?? '')] <=> [($b['zone'] ?? ''), ($b['id'] ?? '')]);
+            usort($items, static fn (array $a, array $b): int => [($a['zone'] ?? ''), ($a['name'] ?? ''), ($a['id'] ?? '')] <=> [($b['zone'] ?? ''), ($b['name'] ?? ''), ($b['id'] ?? '')]);
 
             return $items;
         });
@@ -57,6 +57,10 @@ class Ec2Provider
                     'Tags' => [['Key' => 'Name', 'Value' => $data['name']]],
                 ]],
             ];
+            $clientToken = (string) ($data['client_token'] ?? '');
+            if ($clientToken !== '') {
+                $input['ClientToken'] = $clientToken;
+            }
 
             if ((string) ($data['root_password'] ?? '') !== '') {
                 $input['UserData'] = base64_encode($this->rootPasswordUserData((string) $data['root_password']));
@@ -73,31 +77,35 @@ class Ec2Provider
                 }
             }
 
-            $client->runInstances($input);
+            $this->retryAws('run EC2 instance', fn (): mixed => $client->runInstances($input));
         });
     }
 
     public function startInstance(array $account, string $region, string $id): void
     {
-        $this->call('ec2.start_instance', fn (): mixed => $this->client($account, $region)->startInstances(['InstanceIds' => [$id]]));
+        $this->call('ec2.start_instance', fn (): mixed => $this->retryAws('start EC2 instance', fn (): mixed => $this->client($account, $region)->startInstances(['InstanceIds' => [$id]])));
     }
 
     public function stopInstance(array $account, string $region, string $id): void
     {
-        $this->call('ec2.stop_instance', fn (): mixed => $this->client($account, $region)->stopInstances(['InstanceIds' => [$id]]));
+        $this->call('ec2.stop_instance', fn (): mixed => $this->retryAws('stop EC2 instance', fn (): mixed => $this->client($account, $region)->stopInstances(['InstanceIds' => [$id]])));
     }
 
     public function rebootInstance(array $account, string $region, string $id): void
     {
-        $this->call('ec2.reboot_instance', fn (): mixed => $this->client($account, $region)->rebootInstances(['InstanceIds' => [$id]]));
+        $this->call('ec2.reboot_instance', fn (): mixed => $this->retryAws('reboot EC2 instance', fn (): mixed => $this->client($account, $region)->rebootInstances(['InstanceIds' => [$id]])));
     }
 
     public function terminateInstance(array $account, string $region, string $id): void
     {
         $this->call('ec2.terminate_instance', function () use ($account, $region, $id): void {
             $client = $this->client($account, $region);
-            $this->releaseStaticIpByClient($client, $id);
-            $client->terminateInstances(['InstanceIds' => [$id]]);
+            try {
+                $this->releaseStaticIpByClient($client, $id);
+            } catch (Throwable $exception) {
+                throw new \RuntimeException('Elastic IP cleanup failed; instance was not terminated: ' . $exception->getMessage(), 0, $exception);
+            }
+            $this->retryAws('terminate EC2 instance', fn (): mixed => $client->terminateInstances(['InstanceIds' => [$id]]));
         });
     }
 
@@ -136,15 +144,15 @@ class Ec2Provider
             if ($this->elasticIpForInstance($client, $id) !== null) {
                 return;
             }
-            $allocation = $client->allocateAddress(['Domain' => 'vpc']);
+            $allocation = $this->retryAws('allocate EC2 Elastic IP', fn (): mixed => $client->allocateAddress(['Domain' => 'vpc']));
             $allocationId = (string) ($allocation['AllocationId'] ?? '');
             if ($allocationId === '') {
                 throw new \RuntimeException('EC2 AllocateAddress returned empty allocation id');
             }
             try {
-                $client->associateAddress(['InstanceId' => $id, 'AllocationId' => $allocationId]);
+                $this->retryAws('associate EC2 Elastic IP', fn (): mixed => $client->associateAddress(['InstanceId' => $id, 'AllocationId' => $allocationId]));
             } catch (Throwable $exception) {
-                $client->releaseAddress(['AllocationId' => $allocationId]);
+                $this->safeReleaseAddress($client, $allocationId);
                 throw $exception;
             }
         });
@@ -517,13 +525,21 @@ class Ec2Provider
         }
         $associationId = (string) ($address['AssociationId'] ?? '');
         if ($associationId !== '') {
-            $client->disassociateAddress(['AssociationId' => $associationId]);
+            $this->retryAws('disassociate EC2 Elastic IP', fn (): mixed => $client->disassociateAddress(['AssociationId' => $associationId]), ['InvalidAssociationID.NotFound']);
             $this->waitAddressDisassociated($client, (string) ($address['AllocationId'] ?? ''), $id);
         }
         $allocationId = (string) ($address['AllocationId'] ?? '');
         if ($allocationId !== '') {
-            $client->releaseAddress(['AllocationId' => $allocationId]);
+            $this->safeReleaseAddress($client, $allocationId);
         }
+    }
+
+    private function safeReleaseAddress(Ec2Client $client, string $allocationId): void
+    {
+        if ($allocationId === '') {
+            return;
+        }
+        $this->retryAws('release EC2 Elastic IP', fn (): mixed => $client->releaseAddress(['AllocationId' => $allocationId]), ['InvalidAllocationID.NotFound']);
     }
 
     private function waitAddressDisassociated(Ec2Client $client, string $allocationId, string $id): void
@@ -531,17 +547,60 @@ class Ec2Provider
         if ($allocationId === '') {
             return;
         }
-        for ($attempt = 0; $attempt < 10; $attempt++) {
-            $addresses = $client->describeAddresses(['AllocationIds' => [$allocationId]])['Addresses'] ?? [];
+        for ($attempt = 0; $attempt < 20; $attempt++) {
+            try {
+                $addresses = $client->describeAddresses(['AllocationIds' => [$allocationId]])['Addresses'] ?? [];
+            } catch (Throwable $exception) {
+                if ($this->isAwsError($exception, ['InvalidAllocationID.NotFound'])) {
+                    return;
+                }
+                throw $exception;
+            }
             $instanceId = (string) ($addresses[0]['InstanceId'] ?? '');
             $associationId = (string) ($addresses[0]['AssociationId'] ?? '');
             if ($instanceId !== $id && $associationId === '') {
                 return;
             }
-            usleep(500000);
+            sleep(1);
         }
 
         throw new \RuntimeException('EC2 Elastic IP did not detach from instance: ' . $id);
+    }
+
+    private function retryAws(string $action, callable $callback, array $successCodes = []): mixed
+    {
+        $last = null;
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            try {
+                return $callback();
+            } catch (Throwable $exception) {
+                if ($this->isAwsError($exception, $successCodes)) {
+                    return null;
+                }
+                $last = $exception;
+                if (!$this->isRetryableAwsError($exception) || $attempt === 4) {
+                    break;
+                }
+                usleep((int) (400000 * (1 + $attempt * 0.5)));
+            }
+        }
+
+        throw new \RuntimeException($action . ' failed: ' . ($last?->getMessage() ?? 'unknown error'), 0, $last);
+    }
+
+    private function isRetryableAwsError(Throwable $exception): bool
+    {
+        if (method_exists($exception, 'getStatusCode') && (int) $exception->getStatusCode() >= 500) {
+            return true;
+        }
+        $code = method_exists($exception, 'getAwsErrorCode') ? (string) $exception->getAwsErrorCode() : '';
+
+        return in_array($code, ['RequestLimitExceeded', 'Throttling', 'ThrottlingException', 'ServiceUnavailable', 'InternalError'], true);
+    }
+
+    private function isAwsError(Throwable $exception, array $codes): bool
+    {
+        return method_exists($exception, 'getAwsErrorCode') && in_array((string) $exception->getAwsErrorCode(), $codes, true);
     }
 
     private function instanceView(array $account, string $region, array $instance, array $staticIps): array

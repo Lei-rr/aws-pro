@@ -90,6 +90,8 @@ class Ec2Service
 
     public function createInstance(array $account, string $region, array $data): void
     {
+        $data['account_id'] = (string) ($account['id'] ?? '');
+        $data['region'] = $region;
         $this->provider->createInstance($account, $region, $this->normalizeCreateData($data));
         $this->invalidateEc2Cache((string) $account['id']);
     }
@@ -154,6 +156,7 @@ class Ec2Service
             'name' => AwsValidator::instanceName((string) $data['name']),
             'ami' => $ami,
             'instance_type' => $instanceType,
+            'client_token' => $this->clientToken($data, $ami, $instanceType),
             'enable_ipv6' => filter_var($data['enable_ipv6'] ?? false, FILTER_VALIDATE_BOOL),
             'root_password' => (string) ($data['root_password'] ?? ''),
         ];
@@ -189,7 +192,7 @@ class Ec2Service
             return ($accountId === null || (string) ($item['account_id'] ?? '') === $accountId)
                 && ($region === null || (string) ($item['region'] ?? '') === $region);
         });
-        usort($items, static fn (array $a, array $b): int => [($a['account_id'] ?? ''), ($a['region'] ?? ''), ($a['id'] ?? '')] <=> [($b['account_id'] ?? ''), ($b['region'] ?? ''), ($b['id'] ?? '')]);
+        usort($items, static fn (array $a, array $b): int => [($a['account_id'] ?? ''), ($a['region'] ?? ''), ($a['zone'] ?? ''), ($a['name'] ?? ''), ($a['id'] ?? '')] <=> [($b['account_id'] ?? ''), ($b['region'] ?? ''), ($b['zone'] ?? ''), ($b['name'] ?? ''), ($b['id'] ?? '')]);
 
         return array_values($items);
     }
@@ -198,6 +201,30 @@ class Ec2Service
     {
         $this->provider->terminateInstance($account, $region, $instanceId);
         $this->instances->deleteInstance((string) $account['id'], $region, $instanceId);
+    }
+
+    private function clientToken(array $data, string $ami, string $instanceType): string
+    {
+        $token = trim((string) ($data['client_token'] ?? ''));
+        if ($token !== '') {
+            if (preg_match('/^[A-Za-z0-9._-]{1,64}$/', $token) !== 1) {
+                throw new ApiException('Invalid EC2 client token', 422, 'ec2_client_token_invalid');
+            }
+
+            return $token;
+        }
+        $parts = [
+            'ec2-create',
+            (string) ($data['account_id'] ?? ''),
+            (string) ($data['region'] ?? ''),
+            AwsValidator::instanceName((string) $data['name']),
+            $ami,
+            $instanceType,
+            filter_var($data['enable_ipv6'] ?? false, FILTER_VALIDATE_BOOL) ? 'ipv6' : 'ipv4',
+            hash('sha256', (string) ($data['root_password'] ?? '')),
+        ];
+
+        return substr(hash('sha256', implode('|', $parts)), 0, 64);
     }
 
     private function instanceKey(string $accountId, string $region, string $id): string
