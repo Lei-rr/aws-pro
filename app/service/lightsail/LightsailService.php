@@ -49,7 +49,7 @@ class LightsailService
             'name' => AwsValidator::instanceName((string) $data['name']),
             'zone' => trim((string) $data['zone']),
             'blueprint' => trim((string) $data['blueprint']),
-            'bundle' => $this->normalizeBundleForIpType(trim((string) $data['bundle']), $ipAddressType),
+            'bundle' => $this->validateBundleForIpType(trim((string) $data['bundle']), $ipAddressType),
             'ip_address_type' => $ipAddressType,
             'root_password' => (string) ($data['root_password'] ?? ''),
         ];
@@ -77,6 +77,7 @@ class LightsailService
         return [
             'zones' => $this->aws->availabilityZones($account, $region),
             'bundles' => $this->bundleLabels($account, $region),
+            'bundle_items' => $this->bundleItems($account, $region),
         ];
     }
 
@@ -218,17 +219,17 @@ class LightsailService
         return $value;
     }
 
-    private function normalizeBundleForIpType(string $bundle, string $ipAddressType): string
+    private function validateBundleForIpType(string $bundle, string $ipAddressType): string
     {
-        if ($ipAddressType === 'ipv6') {
-            if (str_contains($bundle, '_ipv6_')) {
-                return $bundle;
-            }
-
-            return preg_replace('/_([0-9]+)_([0-9]+)$/', '_ipv6_$1_$2', $bundle) ?: $bundle;
+        $isIpv6Bundle = str_contains($bundle, '_ipv6_');
+        if ($ipAddressType === 'ipv6' && !$isIpv6Bundle) {
+            throw new ApiException('IPv6-only Lightsail instances require an IPv6-only bundle', 422, 'lightsail_bundle_ip_type_mismatch', ['bundle' => $bundle, 'ip_address_type' => $ipAddressType]);
+        }
+        if ($ipAddressType !== 'ipv6' && $isIpv6Bundle) {
+            throw new ApiException('IPv4 or dual-stack Lightsail instances require a non-IPv6-only bundle', 422, 'lightsail_bundle_ip_type_mismatch', ['bundle' => $bundle, 'ip_address_type' => $ipAddressType]);
         }
 
-        return str_replace('_ipv6_', '_', $bundle);
+        return $bundle;
     }
 
     private function deleteInstance(array $account, string $region, string $instanceName): void
@@ -284,6 +285,17 @@ class LightsailService
     private function bundleLabels(array $account, string $region): array
     {
         return array_map(static fn (array $bundle): string => (string) ($bundle['label'] ?? ''), $this->bundles($account, $region));
+    }
+
+    private function bundleItems(array $account, string $region): array
+    {
+        $bundles = $this->bundles($account, $region);
+
+        return array_map(static fn (string $id, array $bundle): array => [
+            'id' => $id,
+            'label' => (string) ($bundle['label'] ?? ''),
+            'specs' => is_array($bundle['specs'] ?? null) ? $bundle['specs'] : [],
+        ], array_keys($bundles), $bundles);
     }
 
     private function bundleSpecs(array $account, string $region, bool $refresh = false): array

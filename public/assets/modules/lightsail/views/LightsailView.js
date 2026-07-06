@@ -41,7 +41,9 @@ export default {
                 :region-label="createRegionLabel"
                 :form="createForm"
                 :options="createOptions"
+                :bundle-options="createBundleOptions"
                 :blueprints="blueprints"
+                @ip-type-change="ensureCreateBundle"
                 @submit="createInstance"
             />
         </div>

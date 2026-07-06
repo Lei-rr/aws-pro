@@ -29,7 +29,7 @@ export function lightsailState() {
             remark: ''
         },
         createVisible: false,
-        createOptions: { zones: [], bundles: {} },
+        createOptions: { zones: [], bundles: {}, bundle_items: [] },
         createForm: {
             name: '',
             zone: '',
@@ -50,6 +50,17 @@ export const lightsailComputed = {
     },
     createRegionLabel() {
         return this.regionLabel(this.region);
+    },
+    createBundleOptions() {
+        const items = this.createOptions.bundle_items?.length
+            ? this.createOptions.bundle_items
+            : Object.entries(this.createOptions.bundles || {}).map(([id, label]) => ({ id, label }));
+
+        return items.filter((item) => {
+            const id = item.id || '';
+            const isIpv6Bundle = id.includes('_ipv6_');
+            return this.createForm.ip_address_type === 'ipv6' ? isIpv6Bundle : !isIpv6Bundle;
+        });
     }
 };
 
@@ -124,9 +135,15 @@ export const lightsailMethods = {
             ip_address_type: 'dualstack',
             root_password: ''
         };
-        this.createOptions = { zones: [], bundles: {} };
+        this.createOptions = { zones: [], bundles: {}, bundle_items: [] };
         this.createVisible = true;
         await this.loadCreateConfig();
+    },
+    ensureCreateBundle() {
+        const options = this.createBundleOptions || [];
+        if (!options.some((item) => item.id === this.createForm.bundle)) {
+            this.createForm.bundle = options[0]?.id || '';
+        }
     },
     async loadCreateConfig() {
         const token = ++this.createConfigRequestToken;
@@ -136,7 +153,7 @@ export const lightsailMethods = {
             if (token !== this.createConfigRequestToken) return;
             this.createOptions = response.data;
             this.createForm.zone = this.createOptions.zones[0] || '';
-            this.createForm.bundle = Object.keys(this.createOptions.bundles || {})[0] || '';
+            this.ensureCreateBundle();
         } catch (e) {
             if (token !== this.createConfigRequestToken) return;
             message.error(errorMessage(e, '加载配置失败'));
@@ -148,6 +165,10 @@ export const lightsailMethods = {
         this.createForm.name = this.createForm.name.trim();
         if (!this.createForm.name || !this.createForm.zone || !this.createForm.blueprint || !this.createForm.bundle) {
             message.warning('请完整填写实例配置');
+            return;
+        }
+        if (!this.createBundleOptions.some((item) => item.id === this.createForm.bundle)) {
+            message.warning('当前 IP 类型下没有可用套餐');
             return;
         }
 
