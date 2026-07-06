@@ -26,6 +26,7 @@ class NewbieTaskRepository
             'region' => (string) ($row['region'] ?? 'us-east-1'),
             'step' => (string) ($row['step'] ?? 'all'),
             'step_label' => (string) ($row['step_label'] ?? '全部任务'),
+            'operation_ids' => is_array($row['operation_ids'] ?? null) ? $row['operation_ids'] : [],
             'status' => (string) ($row['status'] ?? 'pending'),
             'message' => (string) ($row['message'] ?? ''),
             'created_at' => (int) ($row['created_at'] ?? 0),
@@ -47,12 +48,19 @@ class NewbieTaskRepository
     public function create(string $accountId, string $step, string $stepLabel): ?array
     {
         $now = time();
+        $id = bin2hex(random_bytes(8));
         $task = [
-            'id' => bin2hex(random_bytes(8)),
+            'id' => $id,
             'account_id' => $accountId,
             'region' => 'us-east-1',
             'step' => $step,
             'step_label' => $stepLabel,
+            'operation_ids' => [
+                'budget' => 'nt-' . $id . '-budget',
+                'ec2' => 'nt-' . $id . '-ec2',
+                'lambda' => 'nt-' . $id . '-lambda',
+                'rds' => 'nt-' . $id . '-rds',
+            ],
             'status' => 'pending',
             'message' => '',
             'created_at' => $now,

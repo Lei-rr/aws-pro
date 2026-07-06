@@ -377,6 +377,12 @@ Provider 不负责：
       "region": "us-east-1",
       "step": "all",
       "step_label": "全部任务",
+      "operation_ids": {
+        "budget": "nt-a1b2c3d4e5f67890-budget",
+        "ec2": "nt-a1b2c3d4e5f67890-ec2",
+        "lambda": "nt-a1b2c3d4e5f67890-lambda",
+        "rds": "nt-a1b2c3d4e5f67890-rds"
+      },
       "status": "pending",
       "message": "",
       "created_at": 1783005976,
@@ -386,7 +392,7 @@ Provider 不负责：
 }
 ```
 
-用途：记录新手任务临时状态，用于 SSE 开始前交接和运行中并发锁；任务结束后立即删除，不持久化完成/失败结果。`step` 支持 `all`、`budget`、`ec2`、`lambda`、`rds`；`all` 按固定顺序执行，单项用于失败后重试。任务执行日志通过 SSE 实时输出，不落盘保存。
+用途：记录新手任务临时状态，用于 SSE 开始前交接和运行中并发锁；任务结束后立即删除，不持久化完成/失败结果。`operation_ids` 用于当前任务内的幂等资源名 / token，避免创建请求响应异常时重复创建。`step` 支持 `all`、`budget`、`ec2`、`lambda`、`rds`；`all` 按固定顺序执行，单项用于失败后重试。任务执行日志通过 SSE 实时输出，不落盘保存。
 
 ## 13. API Meta 约定
 

@@ -33,7 +33,7 @@ class NewbieTaskRunner
         return self::STEPS[$step] ?? $step;
     }
 
-    public function run(array $account, string $step, callable $log): void
+    public function run(array $account, string $step, array $operationIds, callable $log): void
     {
         $accountId = $this->accountId($account);
         $log('====== 自动执行 AWS 新手任务 ======');
@@ -41,10 +41,10 @@ class NewbieTaskRunner
         $log('执行范围：%s', $this->stepLabel($step));
 
         $steps = [
-            'budget' => ['任务 1/4', self::STEPS['budget'], fn () => $this->taskBudget($account, $accountId, $log)],
-            'ec2' => ['任务 2/4', self::STEPS['ec2'], fn () => $this->taskEc2($account, $log)],
-            'lambda' => ['任务 3/4', self::STEPS['lambda'], fn () => $this->taskLambda($account, $log)],
-            'rds' => ['任务 4/4', self::STEPS['rds'], fn () => $this->taskRds($account, $log)],
+            'budget' => ['任务 1/4', self::STEPS['budget'], fn () => $this->taskBudget($account, $accountId, $this->operationId($operationIds, 'budget'), $log)],
+            'ec2' => ['任务 2/4', self::STEPS['ec2'], fn () => $this->taskEc2($account, $this->operationId($operationIds, 'ec2'), $log)],
+            'lambda' => ['任务 3/4', self::STEPS['lambda'], fn () => $this->taskLambda($account, $this->operationId($operationIds, 'lambda'), $log)],
+            'rds' => ['任务 4/4', self::STEPS['rds'], fn () => $this->taskRds($account, $this->operationId($operationIds, 'rds'), $log)],
         ];
         foreach ($steps as $key => [$index, $title, $callback]) {
             if ($step !== 'all' && $step !== $key) {
@@ -69,46 +69,73 @@ class NewbieTaskRunner
         }
     }
 
-    private function taskBudget(array $account, string $accountId, callable $log): void
+    private function taskBudget(array $account, string $accountId, string $operationId, callable $log): void
     {
-        $name = 'AutoBudget-' . $this->randomString(6);
-        $email = 'alert-' . $this->randomString(4) . '@gmail.com';
-        $this->clients->budgets($account)->createBudget([
-            'AccountId' => $accountId,
-            'Budget' => [
-                'BudgetName' => $name,
-                'BudgetType' => 'COST',
-                'TimeUnit' => 'MONTHLY',
-                'BudgetLimit' => ['Amount' => '10.0', 'Unit' => 'USD'],
-            ],
-            'NotificationsWithSubscribers' => [[
-                'Notification' => [
-                    'NotificationType' => 'ACTUAL',
-                    'ComparisonOperator' => 'GREATER_THAN',
-                    'Threshold' => 80.0,
+        $name = 'AutoBudget-' . $this->shortId($operationId, 12);
+        $email = 'alert-' . $this->shortId($operationId, 8) . '@gmail.com';
+        $budgets = $this->clients->budgets($account);
+        try {
+            $budgets->createBudget([
+                'AccountId' => $accountId,
+                'Budget' => [
+                    'BudgetName' => $name,
+                    'BudgetType' => 'COST',
+                    'TimeUnit' => 'MONTHLY',
+                    'BudgetLimit' => ['Amount' => '10.0', 'Unit' => 'USD'],
                 ],
-                'Subscribers' => [[
-                    'SubscriptionType' => 'EMAIL',
-                    'Address' => $email,
+                'NotificationsWithSubscribers' => [[
+                    'Notification' => [
+                        'NotificationType' => 'ACTUAL',
+                        'ComparisonOperator' => 'GREATER_THAN',
+                        'Threshold' => 80.0,
+                    ],
+                    'Subscribers' => [[
+                        'SubscriptionType' => 'EMAIL',
+                        'Address' => $email,
+                    ]],
                 ]],
-            ]],
-        ]);
+            ]);
+        } catch (Throwable $exception) {
+            if (!$this->budgetExists($budgets, $accountId, $name)) {
+                throw $exception;
+            }
+            $log('预算 %s 已存在，跳过创建。', $name);
+            return;
+        }
         $log('预算 %s 创建成功，订阅邮箱：%s', $name, $email);
     }
 
-    private function taskEc2(array $account, callable $log): void
+    private function taskEc2(array $account, string $operationId, callable $log): void
     {
         $client = $this->clients->ec2($account, self::REGION);
         $ami = $this->latestAmazonLinuxAmi($client);
         $id = '';
+        $name = 'AutoEC2-' . $this->shortId($operationId, 12);
         try {
-            $result = $client->runInstances([
-                'ImageId' => $ami,
-                'InstanceType' => 't3.micro',
-                'MinCount' => 1,
-                'MaxCount' => 1,
-            ]);
+            try {
+                $result = $client->runInstances([
+                    'ImageId' => $ami,
+                    'InstanceType' => 't3.micro',
+                    'MinCount' => 1,
+                    'MaxCount' => 1,
+                    'ClientToken' => $operationId,
+                    'TagSpecifications' => [[
+                        'ResourceType' => 'instance',
+                        'Tags' => [['Key' => 'Name', 'Value' => $name]],
+                    ]],
+                ]);
+            } catch (Throwable $exception) {
+                $id = $this->findEc2InstanceByName($client, $name);
+                if ($id === '') {
+                    throw $exception;
+                }
+                $log('实例 %s 已存在，继续轮询状态。', $id);
+                $result = [];
+            }
             $id = (string) ($result['Instances'][0]['InstanceId'] ?? '');
+            if ($id === '') {
+                $id = $this->findEc2InstanceByName($client, $name);
+            }
             if ($id === '') {
                 throw new \RuntimeException('EC2 RunInstances returned empty instance id');
             }
@@ -139,25 +166,15 @@ class NewbieTaskRunner
         }
     }
 
-    private function taskLambda(array $account, callable $log): void
+    private function taskLambda(array $account, string $operationId, callable $log): void
     {
         $iam = $this->clients->iam($account);
         $lambda = $this->clients->lambda($account, self::REGION);
-        $roleName = 'AutoLambdaRole-' . $this->randomString(5);
-        $functionName = 'AutoFunc-' . $this->randomString(5);
+        $roleName = 'AutoLambdaRole-' . $this->shortId($operationId, 10);
+        $functionName = 'AutoFunc-' . $this->shortId($operationId, 10);
         $roleArn = '';
         try {
-            $role = $iam->createRole([
-                'RoleName' => $roleName,
-                'AssumeRolePolicyDocument' => json_encode([
-                    'Version' => '2012-10-17',
-                    'Statement' => [[
-                        'Effect' => 'Allow',
-                        'Principal' => ['Service' => 'lambda.amazonaws.com'],
-                        'Action' => 'sts:AssumeRole',
-                    ]],
-                ], JSON_UNESCAPED_SLASHES),
-            ]);
+            $role = $this->createOrGetRole($iam, $roleName);
             $roleArn = (string) ($role['Role']['Arn'] ?? '');
             $log('临时 IAM 角色 %s 创建成功，等待生效...', $roleName);
             sleep(10);
@@ -261,25 +278,32 @@ class NewbieTaskRunner
         return str_contains($message, 'resourcenotfoundexception') || str_contains($message, 'function not found');
     }
 
-    private function taskRds(array $account, callable $log): void
+    private function taskRds(array $account, string $operationId, callable $log): void
     {
         $rds = $this->clients->rds($account, self::REGION);
-        $dbName = 'db-' . $this->randomString(6);
+        $dbName = 'db-' . $this->shortId($operationId, 12);
         $created = false;
         $available = false;
         try {
-            $result = $rds->createDBInstance([
-                'DBInstanceIdentifier' => $dbName,
-                'DBInstanceClass' => 'db.t3.micro',
-                'Engine' => 'mysql',
-                'MasterUsername' => 'admin',
-                'MasterUserPassword' => 'Password123456',
-                'AllocatedStorage' => 20,
-                'BackupRetentionPeriod' => 0,
-            ]);
-            $returnedId = (string) ($result['DBInstance']['DBInstanceIdentifier'] ?? '');
-            if ($returnedId === '') {
-                throw new \RuntimeException('RDS CreateDBInstance returned empty instance id');
+            try {
+                $result = $rds->createDBInstance([
+                    'DBInstanceIdentifier' => $dbName,
+                    'DBInstanceClass' => 'db.t3.micro',
+                    'Engine' => 'mysql',
+                    'MasterUsername' => 'admin',
+                    'MasterUserPassword' => 'Password123456',
+                    'AllocatedStorage' => 20,
+                    'BackupRetentionPeriod' => 0,
+                ]);
+                $returnedId = (string) ($result['DBInstance']['DBInstanceIdentifier'] ?? '');
+                if ($returnedId === '') {
+                    throw new \RuntimeException('RDS CreateDBInstance returned empty instance id');
+                }
+            } catch (Throwable $exception) {
+                if (!$this->rdsExists($rds, $dbName)) {
+                    throw $exception;
+                }
+                $log('数据库 %s 已存在，继续轮询状态。', $dbName);
             }
             $created = true;
             $log('数据库 %s 正在创建，等待 available...', $dbName);
@@ -325,6 +349,10 @@ class NewbieTaskRunner
                 $lambda->createFunction($input);
                 return;
             } catch (Throwable $exception) {
+                if ($this->lambdaFunctionExists($lambda, $functionName)) {
+                    $log('函数 %s 已存在，继续轮询状态。', $functionName);
+                    return;
+                }
                 if ($i === 1) {
                     throw $exception;
                 }
@@ -332,6 +360,117 @@ class NewbieTaskRunner
                 sleep(5);
             }
         }
+    }
+
+    private function budgetExists(mixed $budgets, string $accountId, string $name): bool
+    {
+        for ($i = 0; $i < 3; $i++) {
+            try {
+                $budgets->describeBudget(['AccountId' => $accountId, 'BudgetName' => $name]);
+
+                return true;
+            } catch (Throwable) {
+                sleep(1);
+            }
+        }
+
+        return false;
+    }
+
+    private function findEc2InstanceByName(Ec2Client $client, string $name): string
+    {
+        for ($i = 0; $i < 5; $i++) {
+            $result = $client->describeInstances([
+                'Filters' => [
+                    ['Name' => 'tag:Name', 'Values' => [$name]],
+                    ['Name' => 'instance-state-name', 'Values' => ['pending', 'running', 'stopping', 'stopped', 'shutting-down']],
+                ],
+            ]);
+            foreach (($result['Reservations'] ?? []) as $reservation) {
+                foreach (($reservation['Instances'] ?? []) as $instance) {
+                    $id = (string) ($instance['InstanceId'] ?? '');
+                    if ($id !== '') {
+                        return $id;
+                    }
+                }
+            }
+            sleep(2);
+        }
+
+        return '';
+    }
+
+    private function createOrGetRole(mixed $iam, string $roleName): array
+    {
+        try {
+            return $iam->createRole([
+                'RoleName' => $roleName,
+                'AssumeRolePolicyDocument' => json_encode([
+                    'Version' => '2012-10-17',
+                    'Statement' => [[
+                        'Effect' => 'Allow',
+                        'Principal' => ['Service' => 'lambda.amazonaws.com'],
+                        'Action' => 'sts:AssumeRole',
+                    ]],
+                ], JSON_UNESCAPED_SLASHES),
+            ]);
+        } catch (Throwable $exception) {
+            for ($i = 0; $i < 5; $i++) {
+                try {
+                    return $iam->getRole(['RoleName' => $roleName]);
+                } catch (Throwable) {
+                    sleep(2);
+                }
+            }
+            throw $exception;
+        }
+    }
+
+    private function lambdaFunctionExists(mixed $lambda, string $functionName): bool
+    {
+        for ($i = 0; $i < 5; $i++) {
+            try {
+                $lambda->getFunction(['FunctionName' => $functionName]);
+
+                return true;
+            } catch (Throwable) {
+                sleep(2);
+            }
+        }
+
+        return false;
+    }
+
+    private function rdsExists(mixed $rds, string $dbName): bool
+    {
+        for ($i = 0; $i < 5; $i++) {
+            try {
+                $this->rdsStatus($rds, $dbName);
+
+                return true;
+            } catch (Throwable) {
+                sleep(2);
+            }
+        }
+
+        return false;
+    }
+
+    private function operationId(array $operationIds, string $step): string
+    {
+        $value = (string) ($operationIds[$step] ?? '');
+
+        return $value !== '' ? $value : 'nt-' . bin2hex(random_bytes(8)) . '-' . $step;
+    }
+
+    private function shortId(string $value, int $length): string
+    {
+        $id = strtolower(preg_replace('/[^a-z0-9]+/', '', $value) ?? '');
+        if ($id === '') {
+            $id = bin2hex(random_bytes(8));
+        }
+
+        return substr($id, 0, $length);
     }
 
     private function cleanupRds(mixed $rds, string $dbName, callable $log): void
@@ -456,14 +595,4 @@ class NewbieTaskRunner
         return $local . $central . $end;
     }
 
-    private function randomString(int $length): string
-    {
-        $chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-        $value = '';
-        for ($i = 0; $i < $length; $i++) {
-            $value .= $chars[random_int(0, strlen($chars) - 1)];
-        }
-
-        return $value;
-    }
 }

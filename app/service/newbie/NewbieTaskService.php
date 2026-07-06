@@ -58,7 +58,7 @@ class NewbieTaskService
         $account = $this->accounts->requireAccount((string) $task['account_id']);
         $this->tasks->updateStatus((string) $task['id'], 'running', 'running');
         try {
-            $this->runner->run($account, (string) ($task['step'] ?? 'all'), $emit);
+            $this->runner->run($account, (string) ($task['step'] ?? 'all'), is_array($task['operation_ids'] ?? null) ? $task['operation_ids'] : [], $emit);
             $emit('执行完毕，连接断开。');
         } catch (Throwable $exception) {
             $emit('任务失败：' . $exception->getMessage());
