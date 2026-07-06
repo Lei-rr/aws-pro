@@ -35,6 +35,7 @@ export function lightsailState() {
             zone: '',
             blueprint: 'ubuntu_24_04',
             bundle: '',
+            ip_address_type: 'dualstack',
             root_password: ''
         }
     };
@@ -120,6 +121,7 @@ export const lightsailMethods = {
             zone: '',
             blueprint: Object.keys(this.blueprints)[0] || 'ubuntu_24_04',
             bundle: '',
+            ip_address_type: 'dualstack',
             root_password: ''
         };
         this.createOptions = { zones: [], bundles: {} };

@@ -41,6 +41,7 @@ class LightsailProvider
                 'availabilityZone' => $data['zone'],
                 'blueprintId' => $data['blueprint'],
                 'bundleId' => $data['bundle'],
+                'ipAddressType' => $data['ip_address_type'] ?? 'dualstack',
             ];
             if (!empty($data['root_password'])) {
                 $input['userData'] = $this->rootPasswordUserData((string) $data['root_password']);

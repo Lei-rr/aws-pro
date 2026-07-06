@@ -43,12 +43,14 @@ class LightsailService
     public function normalizeCreateOptions(array $data): array
     {
         AwsValidator::required($data, ['name', 'zone', 'blueprint', 'bundle']);
+        $ipAddressType = $this->normalizeIpAddressType((string) ($data['ip_address_type'] ?? 'dualstack'));
 
         return [
             'name' => AwsValidator::instanceName((string) $data['name']),
             'zone' => trim((string) $data['zone']),
             'blueprint' => trim((string) $data['blueprint']),
-            'bundle' => trim((string) $data['bundle']),
+            'bundle' => $this->normalizeBundleForIpType(trim((string) $data['bundle']), $ipAddressType),
+            'ip_address_type' => $ipAddressType,
             'root_password' => (string) ($data['root_password'] ?? ''),
         ];
     }
@@ -204,6 +206,29 @@ class LightsailService
         ]);
 
         return array_values($items);
+    }
+
+    private function normalizeIpAddressType(string $value): string
+    {
+        $value = trim($value) ?: 'dualstack';
+        if (!in_array($value, ['dualstack', 'ipv4', 'ipv6'], true)) {
+            throw new ApiException('Invalid Lightsail IP address type', 422, 'lightsail_ip_address_type_invalid', ['ip_address_type' => $value]);
+        }
+
+        return $value;
+    }
+
+    private function normalizeBundleForIpType(string $bundle, string $ipAddressType): string
+    {
+        if ($ipAddressType === 'ipv6') {
+            if (str_contains($bundle, '_ipv6_')) {
+                return $bundle;
+            }
+
+            return preg_replace('/_([0-9]+)_([0-9]+)$/', '_ipv6_$1_$2', $bundle) ?: $bundle;
+        }
+
+        return str_replace('_ipv6_', '_', $bundle);
     }
 
     private function deleteInstance(array $account, string $region, string $instanceName): void
