@@ -58,7 +58,7 @@ export const lightsailComputed = {
 
         return items.filter((item) => {
             const id = item.id || '';
-            const isIpv6Bundle = id.includes('_ipv6_');
+            const isIpv6Bundle = item.is_ipv6_only ?? id.includes('_ipv6_');
             return this.createForm.ip_address_type === 'ipv6' ? isIpv6Bundle : !isIpv6Bundle;
         });
     }

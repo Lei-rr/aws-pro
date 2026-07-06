@@ -26,6 +26,8 @@ class LightsailBundleGateway
                 $items[$bundleId] = [
                     'label' => $this->bundleLabel($bundleId, $item),
                     'specs' => $this->bundleSpecs($item),
+                    'public_ipv4_count' => isset($item['publicIpv4AddressCount']) ? (int) $item['publicIpv4AddressCount'] : null,
+                    'is_ipv6_only' => $this->isIpv6OnlyBundle($bundleId, $item),
                 ];
             }
 
@@ -60,6 +62,15 @@ class LightsailBundleGateway
             'transfer' => !empty($bundle['transferPerMonthInGb']) ? ((float) $bundle['transferPerMonthInGb']) / 1024 : null,
             'price' => isset($bundle['price']) ? (float) $bundle['price'] : null,
         ];
+    }
+
+    private function isIpv6OnlyBundle(string $bundleId, array $bundle): bool
+    {
+        if (isset($bundle['publicIpv4AddressCount'])) {
+            return (int) $bundle['publicIpv4AddressCount'] === 0;
+        }
+
+        return str_contains($bundleId, '_ipv6_');
     }
 
     private function call(string $operation, callable $callback): mixed

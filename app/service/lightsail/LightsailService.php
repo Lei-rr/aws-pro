@@ -44,12 +44,13 @@ class LightsailService
     {
         AwsValidator::required($data, ['name', 'zone', 'blueprint', 'bundle']);
         $ipAddressType = $this->normalizeIpAddressType((string) ($data['ip_address_type'] ?? 'dualstack'));
+        $bundle = trim((string) $data['bundle']);
 
         return [
             'name' => AwsValidator::instanceName((string) $data['name']),
             'zone' => trim((string) $data['zone']),
             'blueprint' => trim((string) $data['blueprint']),
-            'bundle' => $this->validateBundleForIpType(trim((string) $data['bundle']), $ipAddressType),
+            'bundle' => $this->validateBundleForIpType($bundle, $ipAddressType, is_array($data['bundle_meta'] ?? null) ? $data['bundle_meta'] : null),
             'ip_address_type' => $ipAddressType,
             'root_password' => (string) ($data['root_password'] ?? ''),
         ];
@@ -83,6 +84,8 @@ class LightsailService
 
     public function createInstance(array $account, string $region, array $data): void
     {
+        $bundleId = trim((string) ($data['bundle'] ?? ''));
+        $data['bundle_meta'] = $bundleId !== '' ? ($this->bundles($account, $region)[$bundleId] ?? null) : null;
         $normalized = $this->normalizeCreateOptions($data);
         $this->aws->createInstance($account, $region, $normalized);
         $this->invalidateLightsailCache((string) $account['id']);
@@ -219,9 +222,12 @@ class LightsailService
         return $value;
     }
 
-    private function validateBundleForIpType(string $bundle, string $ipAddressType): string
+    private function validateBundleForIpType(string $bundle, string $ipAddressType, ?array $bundleMeta = null): string
     {
-        $isIpv6Bundle = str_contains($bundle, '_ipv6_');
+        if ($bundleMeta === null) {
+            throw new ApiException('Lightsail bundle is not available in current region', 422, 'lightsail_bundle_unavailable', ['bundle' => $bundle]);
+        }
+        $isIpv6Bundle = (bool) ($bundleMeta['is_ipv6_only'] ?? str_contains($bundle, '_ipv6_'));
         if ($ipAddressType === 'ipv6' && !$isIpv6Bundle) {
             throw new ApiException('IPv6-only Lightsail instances require an IPv6-only bundle', 422, 'lightsail_bundle_ip_type_mismatch', ['bundle' => $bundle, 'ip_address_type' => $ipAddressType]);
         }
@@ -295,6 +301,8 @@ class LightsailService
             'id' => $id,
             'label' => (string) ($bundle['label'] ?? ''),
             'specs' => is_array($bundle['specs'] ?? null) ? $bundle['specs'] : [],
+            'public_ipv4_count' => $bundle['public_ipv4_count'] ?? null,
+            'is_ipv6_only' => (bool) ($bundle['is_ipv6_only'] ?? str_contains($id, '_ipv6_')),
         ], array_keys($bundles), $bundles);
     }
 
