@@ -1,5 +1,7 @@
-
 <template>
   <router-view />
 </template>
-<script setup lang="ts"></script>
+
+<script>
+export default { name: 'App' }
+</script>

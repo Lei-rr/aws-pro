@@ -1,37 +1,136 @@
-
 <template>
-  <a-space direction="vertical" :size="16" style="width:100%">
-    <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
-      <a-typography-title :level="3" style="margin:0">配额</a-typography-title>
-      <a-space>
-        <AccountSelect v-model="accountId" />
-        <RegionSelect v-model="region" :regions="regions" />
-        <a-button type="primary" :loading="loading" @click="load(true)">查询</a-button>
-      </a-space>
-    </div>
-    <a-table :data-source="items" :loading="loading" row-key="name" :pagination="false">
-      <a-table-column title="名称" data-index="name" />
-      <a-table-column title="区域" data-index="region" />
-      <a-table-column title="值" data-index="value" />
-    </a-table>
-  </a-space>
+
+        <section>
+            <div class="page-toolbar">
+                <div>
+                    <a-typography-title :level="3" style="margin-bottom: 4px">vCPU 配额</a-typography-title>
+                    <a-typography-text type="secondary">按账号和区域查询 Lightsail 相关服务配额。</a-typography-text>
+                </div>
+                <div class="page-actions">
+                    <a-space wrap class="aws-inline-controls">
+                        <div class="toolbar-control"><account-select v-model="accountId" /></div>
+                        <div class="toolbar-control"><region-select v-model="region" @loaded="regions = $event" /></div>
+                        <a-button type="primary" :loading="loading" :disabled="!accountId || !region" @click="query(true)">刷新配额</a-button>
+                    </a-space>
+                </div>
+            </div>
+            <a-table :row-key="rowKey" :loading="loading" :columns="columns" :data-source="items" :pagination="pagination" size="middle" :scroll="{ x: 760 }" :locale="{ emptyText: '请选择账号和区域后点击刷新按钮查询 vCPU 配额。' }">
+                <template #bodyCell="{ column, record }">
+                    <template v-if="column.key === 'region'">{{ regionLabel(record.region) }}</template>
+                    <template v-else-if="column.key === 'value'"><a-tag :color="record.error ? 'error' : 'blue'">{{ record.error ? '查询失败' : record.value }}</a-tag></template>
+                </template>
+            </a-table>
+        </section>
+    
 </template>
-<script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import AccountSelect from '@/shared/components/AccountSelect.vue'
-import RegionSelect from '@/shared/components/RegionSelect.vue'
-import { quotaApi } from './api'
-import http from '@/shared/utils/request'
-import { message } from '@/shared/plugins/antDesignVue'
-import { errorMessage } from '@/shared/utils/errors'
-const accountId=ref<string>(); const region=ref<string>(); const regions=ref<Record<string,string>>({})
-const items=ref<any[]>([]); const loading=ref(false)
-async function loadConfig(){ const res=await http.get<any>('/config'); regions.value=res.data?.ec2_regions||res.data?.regions||{} }
-async function load(refresh=false){
-  if(!accountId.value||!region.value) return message.warning('请选择账号和区域')
-  loading.value=true
-  try{ const res=await quotaApi.vcpu(accountId.value, region.value, refresh); items.value=(res.data as any)?.items||[] }
-  catch(e){ message.error(errorMessage(e)) } finally{ loading.value=false }
-}
-onMounted(loadConfig)
+
+<script>
+import AccountSelect from '../../shared/components/AccountSelect.vue';
+import RegionSelect from '../../shared/components/RegionSelect.vue';
+import { quotaApi } from './api.js';
+import { regionName } from '../../shared/utils/format.js';
+import { errorMessage } from '../../shared/utils/errors.js';
+import { message } from '../../shared/plugins/antDesignVue.js';
+import { tablePagination } from '../../shared/utils/pagination.js';
+
+export default {
+    name: 'QuotaView',
+    components: { AccountSelect, RegionSelect },
+    data() {
+        return {
+            loading: false,
+            accountId: '',
+            region: '',
+            regions: {},
+            meta: { cached: false },
+            loadRequestToken: 0,
+            items: [],
+            columns: [
+                { title: '配额名称', dataIndex: 'name', key: 'name' },
+                { title: '账号', dataIndex: 'account_id', key: 'account_id', width: 220 },
+                { title: '区域', dataIndex: 'region', key: 'region', width: 180 },
+                { title: '值', dataIndex: 'value', key: 'value', width: 100 }
+            ]
+        };
+    },
+    computed: {
+        pagination() {
+            return tablePagination();
+        }
+    },
+    async mounted() {
+        // 页面加载时尝试读取缓存
+        if (this.accountId && this.region) {
+            await this.loadFromCache();
+        }
+    },
+    watch: {
+        accountId() {
+            this.items = [];
+            this.meta = { cached: false };
+            if (this.accountId && this.region) {
+                this.loadFromCache();
+            }
+        },
+        region() {
+            this.items = [];
+            this.meta = { cached: false };
+            if (this.accountId && this.region) {
+                this.loadFromCache();
+            }
+        }
+    },
+    methods: {
+        regionLabel(id) {
+            return regionName(this.regions, id);
+        },
+        rowKey(row) {
+            return `${row.account_id}:${row.region}:${row.name}`;
+        },
+        async loadFromCache() {
+            if (!this.accountId || !this.region) {
+                return;
+            }
+            const token = ++this.loadRequestToken;
+            try {
+                const response = await quotaApi.vcpu(
+                    { account_id: this.accountId, region: this.region },
+                    { cache_only: true }
+                );
+                if (token !== this.loadRequestToken) return;
+                const items = response.data.items || response.data || [];
+                if (items.length > 0) {
+                    this.items = items;
+                    this.meta = response.data.meta || { cached: true };
+                } else {
+                    this.meta = { cached: false };
+                }
+            } catch (e) {
+                // 缓存读取失败静默处理
+            }
+        },
+        async query(refresh = false) {
+            if (!this.accountId || !this.region) {
+                message.warning('请选择账号和区域');
+                return;
+            }
+            const token = ++this.loadRequestToken;
+            this.loading = true;
+            try {
+                const response = await quotaApi.vcpu(
+                    { account_id: this.accountId, region: this.region },
+                    { refresh }
+                );
+                if (token !== this.loadRequestToken) return;
+                this.items = response.data.items || response.data || [];
+                this.meta = response.data.meta || { cached: false };
+            } catch (e) {
+                if (token !== this.loadRequestToken) return;
+                message.error(errorMessage(e, '查询失败'));
+            } finally {
+                if (token === this.loadRequestToken) this.loading = false;
+            }
+        }
+    }
+    };
 </script>

@@ -1,24 +1,63 @@
-
 <template>
-  <a-select
-    v-model:value="model"
-    style="min-width: 220px"
-    :options="options"
-    :loading="loading"
-    placeholder="选择账号"
-    allow-clear
-  />
-</template>
-<script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useAccountsStore } from '@/stores/accounts'
 
-const model = defineModel<string | undefined>({ default: undefined })
-const accountsStore = useAccountsStore()
-const loading = ref(false)
-const options = computed(() => accountsStore.items.map((a) => ({ label: a.remark ? `${a.id} (${a.remark})` : a.id, value: a.id })))
-onMounted(async () => {
-  loading.value = true
-  try { await accountsStore.load() } finally { loading.value = false }
-})
+        <a-select
+            style="width: 100%"
+            :value="modelValue"
+            :loading="loading"
+            :disabled="loading"
+            placeholder="选择账号"
+            @change="$emit('update:modelValue', $event)"
+        >
+            <a-select-option v-for="item in accounts" :key="item.id" :value="item.id">
+                {{ item.remark ? item.id + ' - ' + item.remark : item.id }}
+            </a-select-option>
+        </a-select>
+    
+</template>
+
+<script>
+import { loadAccounts, useAccountStore } from '../stores/accounts.js';
+import { message } from '../plugins/antDesignVue.js';
+import { errorMessage } from '../utils/errors.js';
+
+export default {
+    name: 'AccountSelect',
+    props: {
+        modelValue: { type: String, default: '' }
+    },
+    emits: ['update:modelValue', 'loaded'],
+    data() {
+        return {
+            loading: false
+        };
+    },
+    computed: {
+        accounts() {
+            return this.accountStore.accounts || [];
+        }
+    },
+    setup() {
+        return { accountStore: useAccountStore() };
+    },
+    async mounted() {
+        await this.load();
+    },
+    methods: {
+        async load() {
+            this.loading = true;
+            try {
+                await loadAccounts();
+                this.$emit('loaded', this.accounts);
+                if (!this.modelValue && this.accounts[0]) {
+                    this.$emit('update:modelValue', this.accounts[0].id);
+                }
+            } catch (e) {
+                this.$emit('loaded', this.accounts);
+                message.error(errorMessage(e, '加载账号失败'));
+            } finally {
+                this.loading = false;
+            }
+        }
+    }
+    };
 </script>
