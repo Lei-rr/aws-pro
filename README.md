@@ -37,11 +37,8 @@ npm start
 http://127.0.0.1:2023
 ```
 
-默认登录：
+默认登录：`admin / admin`（未配置 `data/config.json` 时自动使用）
 
-```text
-admin / admin
-```
 
 ## 开发
 
@@ -55,6 +52,9 @@ admin / admin
 npm run dev          # 后端 3023
 npm run dev:web      # 前端 5173，代理到 3023
 ```
+
+
+> `data/` 仅放运行时私有数据（登录配置、账号密钥、实例缓存、任务状态），已在 `.gitignore` 排除。区域中文名/蓝图内置在代码 `src/config/app-defaults.ts`，不再使用 `data/app-config.json`。
 
 ## Docker
 
@@ -74,9 +74,8 @@ docker run -d   --name aws-pro   --restart unless-stopped   -p 2023:2023   -v "$
 
 | 文件 | 说明 |
 |---|---|
-| `data/config.json` | 登录账号 |
+| `data/config.json` | 登录账号（可选；缺省/空密码时默认 admin/admin） |
 | `data/accounts.json` | AWS 账号密钥 |
-| `data/app-config.json` | 区域/镜像预置 |
 | `data/lightsail-instances.json` | Lightsail 快照 |
 | `data/ec2-instances.json` | EC2 快照 |
 | `data/newbie-tasks.json` | 新手任务状态 |

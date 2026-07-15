@@ -1,26 +1,17 @@
-import { JsonStore } from '../../lib/storage/json-store.js'
+import { BUILTIN_APP_CONFIG, type AppConfigData } from '../../config/app-defaults.js'
 
-export type AppConfigData = {
-  regions: Record<string, string>
-  ec2_regions: Record<string, string>
-  blueprints: Record<string, string>
-}
+export type { AppConfigData }
 
-const DEFAULT: AppConfigData = {
-  regions: {},
-  ec2_regions: {},
-  blueprints: {},
-}
-
+/**
+ * Panel catalog config (region labels / blueprints).
+ * Source of truth is built-in defaults only — no data/app-config.json.
+ */
 export class SystemConfigRepository {
-  constructor(private readonly store = new JsonStore<AppConfigData>('app-config.json', DEFAULT)) {}
-
   async read(): Promise<AppConfigData> {
-    const data = await this.store.read()
     return {
-      regions: data.regions ?? {},
-      ec2_regions: data.ec2_regions ?? {},
-      blueprints: data.blueprints ?? {},
+      regions: { ...BUILTIN_APP_CONFIG.regions },
+      ec2_regions: { ...BUILTIN_APP_CONFIG.ec2_regions },
+      blueprints: { ...BUILTIN_APP_CONFIG.blueprints },
     }
   }
 }
