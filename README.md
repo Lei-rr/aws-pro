@@ -71,10 +71,12 @@ npm run verify       # lint + typecheck + web typecheck + build
 
 ### 镜像
 
+推荐统一使用 `latest`（默认分支 `fast` 构建后会打上该标签）。
+
 | 标签 | 说明 |
 |---|---|
-| `ghcr.io/lei-rr/aws-pro:fast` | `fast` 分支最新构建 |
-| `ghcr.io/lei-rr/aws-pro:latest` | 默认分支最新构建（现为 `fast`） |
+| `ghcr.io/lei-rr/aws-pro:latest` | **推荐**，默认分支最新构建 |
+| `ghcr.io/lei-rr/aws-pro:fast` | `fast` 分支标签（同 latest） |
 | `ghcr.io/lei-rr/aws-pro:sha-<commit>` | 指定提交 |
 
 ### Compose（推荐）
@@ -84,7 +86,7 @@ mkdir -p aws-pro && cd aws-pro
 cat > compose.yaml <<'EOF'
 services:
   aws-pro:
-    image: ghcr.io/lei-rr/aws-pro:fast
+    image: ghcr.io/lei-rr/aws-pro:latest
     container_name: aws-pro
     restart: unless-stopped
     ports:
@@ -100,14 +102,14 @@ docker compose up -d
 ### 单容器
 
 ```bash
-docker pull ghcr.io/lei-rr/aws-pro:fast
+docker pull ghcr.io/lei-rr/aws-pro:latest
 
 docker run -d \
   --name aws-pro \
   --restart unless-stopped \
   -p 2023:2023 \
   -v "$PWD/data:/app/data" \
-  ghcr.io/lei-rr/aws-pro:fast
+  ghcr.io/lei-rr/aws-pro:latest
 ```
 
 ### 更新
