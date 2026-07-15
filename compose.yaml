@@ -1,6 +1,6 @@
 services:
   aws-pro:
-    image: ghcr.io/lei-rr/aws-pro:latest
+    image: ghcr.io/lei-rr/aws-pro:fast
     container_name: aws-pro
     restart: unless-stopped
     ports:
