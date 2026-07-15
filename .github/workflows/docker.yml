@@ -35,6 +35,8 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
+            # Prefer latest for deploy. Tag it on fast and on the repo default branch.
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/fast' }}
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=branch
             type=ref,event=tag
