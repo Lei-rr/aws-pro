@@ -48,8 +48,10 @@ export interface NewbieTask {
   account_id: string
   step: string
   step_label: string
-  status: 'pending' | 'running' | 'cancelling' | 'done' | 'failed'
+  status: 'pending' | 'running' | 'cancelling' | 'completed' | 'cancelled' | 'failed'
   message?: string
+  /** Persisted execution logs for poll / read-only SSE. */
+  logs?: string[]
   operation_ids?: Record<string, string>
   created_at: number
   updated_at: number

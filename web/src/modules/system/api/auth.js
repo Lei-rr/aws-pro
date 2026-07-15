@@ -10,7 +10,6 @@ let mePromise = null
 
 function rememberMe(response) {
   mePromise = Promise.resolve(response)
-
   return response
 }
 
@@ -21,9 +20,8 @@ export function clearAuthCache() {
 window.addEventListener('auth-invalidated', clearAuthCache)
 
 export const authApi = {
-  captchaUrl: () => `/captcha?t=${Date.now()}`,
-  login: async (username, password, captcha) => {
-    const response = await http.post(endpoints.login, { username, password, captcha })
+  login: async (username, password) => {
+    const response = await http.post(endpoints.login, { username, password })
     return rememberMe(response)
   },
   logout: async () => {
@@ -31,10 +29,12 @@ export const authApi = {
     return http.delete(endpoints.logout)
   },
   me: () => {
-    if (!mePromise) mePromise = http.get(endpoints.me).catch((error) => {
-      clearAuthCache()
-      throw error
-    })
+    if (!mePromise) {
+      mePromise = http.get(endpoints.me).catch((error) => {
+        clearAuthCache()
+        throw error
+      })
+    }
     return mePromise
   },
 }

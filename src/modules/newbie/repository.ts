@@ -1,8 +1,10 @@
-import crypto from 'node:crypto'
+import * as crypto from 'node:crypto'
 import { JsonStore } from '../../lib/storage/json-store.js'
 import type { NewbieTask } from '../../types/aws.js'
 
 type StoreShape = { items: NewbieTask[] }
+
+const ACTIVE = new Set(['pending', 'running', 'cancelling'])
 
 export class NewbieTaskRepository {
   constructor(private readonly store = new JsonStore<StoreShape>('newbie-tasks.json', { items: [] })) {}
@@ -21,7 +23,7 @@ export class NewbieTaskRepository {
     let created: NewbieTask | null = null
     await this.store.transaction((current) => {
       const items = current.items ?? []
-      if (items.some((t) => ['pending', 'running', 'cancelling'].includes(t.status))) {
+      if (items.some((t) => ACTIVE.has(t.status))) {
         return { next: current }
       }
       created = {
@@ -31,6 +33,7 @@ export class NewbieTaskRepository {
         step_label: stepLabel,
         status: 'pending',
         message: 'pending',
+        logs: ['任务已创建，等待后台执行...'],
         operation_ids: {
           budget: crypto.randomUUID(),
           ec2: crypto.randomUUID(),
@@ -49,8 +52,34 @@ export class NewbieTaskRepository {
     await this.store.transaction((current) => ({
       next: {
         items: (current.items ?? []).map((t) =>
-          t.id === id ? { ...t, status, message: message ?? t.message, updated_at: Date.now() } : t
+          t.id === id
+            ? {
+                ...t,
+                status,
+                message: message ?? t.message,
+                updated_at: Date.now(),
+              }
+            : t,
         ),
+      },
+    }))
+  }
+
+  async appendLog(id: string, line: string): Promise<void> {
+    const text = String(line || '').trimEnd()
+    if (!text) return
+    await this.store.transaction((current) => ({
+      next: {
+        items: (current.items ?? []).map((t) => {
+          if (t.id !== id) return t
+          const logs = [...(t.logs ?? []), text].slice(-2000)
+          return {
+            ...t,
+            logs,
+            message: text.slice(0, 240),
+            updated_at: Date.now(),
+          }
+        }),
       },
     }))
   }
@@ -59,9 +88,14 @@ export class NewbieTaskRepository {
     let ok = false
     await this.store.transaction((current) => {
       const items = (current.items ?? []).map((t) => {
-        if (t.id === id && ['pending', 'running'].includes(t.status)) {
+        if (t.id === id && (t.status === 'pending' || t.status === 'running')) {
           ok = true
-          return { ...t, status: 'cancelling' as const, message: 'cancelling', updated_at: Date.now() }
+          return {
+            ...t,
+            status: 'cancelling' as const,
+            message: 'cancelling',
+            updated_at: Date.now(),
+          }
         }
         return t
       })
@@ -78,6 +112,19 @@ export class NewbieTaskRepository {
   async delete(id: string): Promise<void> {
     await this.store.transaction((current) => ({
       next: { items: (current.items ?? []).filter((t) => t.id !== id) },
+    }))
+  }
+
+  /** Keep finished tasks briefly for log polling; drop older terminal tasks. */
+  async pruneFinished(keepMs = 6 * 60 * 60 * 1000): Promise<void> {
+    const cutoff = Date.now() - keepMs
+    await this.store.transaction((current) => ({
+      next: {
+        items: (current.items ?? []).filter((t) => {
+          if (ACTIVE.has(t.status)) return true
+          return (t.updated_at || 0) >= cutoff
+        }),
+      },
     }))
   }
 }
