@@ -69,6 +69,9 @@ export default {
   beforeUnmount() {
     this.stopWatching()
   },
+  async mounted() {
+    await this.restoreActiveTask()
+  },
   computed: {
     canStart() {
       return !!this.accountId && !this.running
@@ -90,6 +93,24 @@ export default {
     },
   },
   methods: {
+    async restoreActiveTask() {
+      try {
+        const response = await newbieApi.getActiveTask()
+        const task = response.data
+        if (!task?.id) return
+        this.task = task
+        this.accountId = task.account_id || this.accountId
+        this.step = task.step || this.step
+        this.logs = Array.isArray(task.logs) && task.logs.length ? [...task.logs] : this.logs
+        this.logCursor = Array.isArray(task.logs) ? task.logs.length : 0
+        if (['pending', 'running', 'cancelling'].includes(task.status)) {
+          this.running = true
+          this.watchTask(task.id)
+        }
+      } catch {
+        // ignore restore failures
+      }
+    },
     confirmStart() {
       if (!this.accountId) {
         message.warning('请选择账号')

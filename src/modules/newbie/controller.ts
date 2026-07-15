@@ -6,6 +6,10 @@ export async function newbieStore(request: FastifyRequest, reply: FastifyReply) 
   return reply.status(201).send(success(await request.server.ctx.newbieTaskService.create(body)))
 }
 
+export async function newbieActive(request: FastifyRequest, reply: FastifyReply) {
+  return reply.send(success(await request.server.ctx.newbieTaskService.active()))
+}
+
 export async function newbieShow(request: FastifyRequest<{ Params: { task: string } }>, reply: FastifyReply) {
   return reply.send(success(await request.server.ctx.newbieTaskService.find(request.params.task)))
 }

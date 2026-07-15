@@ -35,6 +35,15 @@ export class NewbieTaskService {
     return task
   }
 
+  async active() {
+    await this.tasks.pruneFinished()
+    const task = await this.tasks.findActive()
+    if (task && (task.status === 'pending' || task.status === 'running' || task.status === 'cancelling')) {
+      this.ensureBackground(task.id)
+    }
+    return task
+  }
+
   async cancel(id: string) {
     id = this.taskId(id)
     const task = await this.find(id)

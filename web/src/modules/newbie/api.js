@@ -4,6 +4,9 @@ export const newbieApi = {
   createTask(data) {
     return http.post('/newbie/tasks', data)
   },
+  getActiveTask() {
+    return http.get('/newbie/tasks/active')
+  },
   getTask(id) {
     return http.get(`/newbie/tasks/${encodeURIComponent(id)}`)
   },

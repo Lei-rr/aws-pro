@@ -18,6 +18,13 @@ export class NewbieTaskRepository {
     return (await this.all()).find((t) => t.id === id) ?? null
   }
 
+  async findActive(): Promise<NewbieTask | null> {
+    return (
+      (await this.all()).find((t) => t.status === 'pending' || t.status === 'running' || t.status === 'cancelling') ??
+      null
+    )
+  }
+
   async create(accountId: string, step: string, stepLabel: string): Promise<NewbieTask | null> {
     const now = Date.now()
     let created: NewbieTask | null = null

@@ -1,5 +1,5 @@
 
-import crypto from 'node:crypto'
+import * as crypto from 'node:crypto'
 import { CreateBudgetCommand, DescribeBudgetCommand } from '@aws-sdk/client-budgets'
 import {
   DescribeImagesCommand,
@@ -19,6 +19,7 @@ import {
   DeleteDBInstanceCommand,
   DescribeDBInstancesCommand,
 } from '@aws-sdk/client-rds'
+import { GetCallerIdentityCommand } from '@aws-sdk/client-sts'
 import type { AwsAccount } from '../../types/aws.js'
 import { AwsClientFactory } from '../../lib/aws/client-factory.js'
 import { withAwsRetry } from '../../lib/aws/retry.js'
@@ -53,9 +54,10 @@ export class NewbieTaskRunner {
   }
 
   async run(account: AwsAccount, step: string, operationIds: Record<string, string>, log: LogFn, cancelled: CancelFn = async () => false) {
-    const accountId = account.id
+    // Local panel account id may be an email/alias. Budgets API requires the real 12-digit AWS AccountId.
+    const accountId = await this.resolveAwsAccountId(account)
     log('====== 自动执行 AWS 新手任务 ======')
-    log(fmt('区域：固定使用 %s，账户 ID：%s', [REGION, accountId]))
+    log(fmt('区域：固定使用 %s，账户 ID：%s（本地账号：%s）', [REGION, accountId, account.id]))
     log(fmt('执行范围：%s', [this.stepLabel(step)]))
 
     const steps: Array<[string, string, string, () => Promise<void>]> = [
@@ -581,6 +583,17 @@ export class NewbieTaskRunner {
     end.writeUInt32LE(localHeader.length + data.length, 16)
     end.writeUInt16LE(0, 20)
     return Buffer.concat([localHeader, data, central, end])
+  }
+
+  private async resolveAwsAccountId(account: AwsAccount): Promise<string> {
+    const result = await withAwsRetry('get newbie caller identity', () =>
+      this.clients.sts(account).send(new GetCallerIdentityCommand({})),
+    )
+    const id = String(result?.Account ?? '').trim()
+    if (!/^\d{12}$/.test(id)) {
+      throw new Error(`Unable to resolve AWS AccountId from STS (got: ${id || 'empty'})`)
+    }
+    return id
   }
 
   private operationId(operationIds: Record<string, string>, step: string) {
