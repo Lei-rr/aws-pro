@@ -50,7 +50,7 @@ export class RegionService {
     if (!configured[region]) throw new ApiError('region_not_configured', 'Region is not configured', 422, { region })
     const account = await this.accounts.requireAccount(accountId)
     const result = await this.provider.enable(account, region)
-    invalidateAwsCache(awsAccountTags(accountId, 'regions'))
+    await invalidateAwsCache(awsAccountTags(accountId, 'regions'))
     return result
   }
 }

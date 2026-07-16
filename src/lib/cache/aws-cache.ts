@@ -1,15 +1,12 @@
-import { globalCache } from './cache-service.js'
-import { buildCacheKey } from './cache-helpers.js'
+import { cacheManager, type CacheReadMode, type CacheResult } from './cache-manager.js'
 
-export type CacheReadMode = {
-  refresh?: boolean
-  cacheOnly?: boolean
-}
+export type { CacheReadMode }
 
 export type CacheMeta = {
   cache: boolean
   cached: boolean
-  source: 'cache' | 'cache_miss' | 'aws' | 'local'
+  source: 'cache' | 'cache_miss' | 'aws' | 'local' | 'memory' | 'file' | 'loader' | 'miss'
+  store?: 'memory' | 'file' | 'layered'
 }
 
 export type CachedResult<T> = {
@@ -48,12 +45,34 @@ export function awsAccountTags(accountId: string, ...extra: string[]): string[] 
   return tags
 }
 
+function mapResult<T>(result: CacheResult<T>): CachedResult<T> {
+  const source =
+    result.meta.source === 'memory' || result.meta.source === 'file'
+      ? 'cache'
+      : result.meta.source === 'loader'
+        ? 'aws'
+        : result.meta.source === 'miss'
+          ? 'cache_miss'
+          : (result.meta.source as CacheMeta['source'])
+
+  return {
+    value: result.value,
+    hit: result.hit,
+    meta: {
+      cache: result.meta.cache,
+      cached: result.meta.cached,
+      source,
+      store: result.meta.store,
+    },
+  }
+}
+
 /**
  * Unified cache read/write helper used by quota/billing/regions (and reusable by others).
  *
- * Rules:
- * - refresh=false  => only read cache; miss returns empty without calling loader
- * - refresh=true   => call loader, store result, return fresh data
+ * Default store is layered (memory + file under data/cache/aws):
+ * - refresh=false => only read cache; miss returns empty without calling loader
+ * - refresh=true  => call loader, store to memory+file, return fresh data
  */
 export async function withAwsCache<T>(options: {
   key: string | { prefix: string; parts: Record<string, unknown> }
@@ -62,47 +81,24 @@ export async function withAwsCache<T>(options: {
   mode?: CacheReadMode
   emptyOnMiss: T
   loader: () => Promise<T>
+  /** Defaults to layered so restart can still serve last refresh. */
+  store?: 'memory' | 'file' | 'layered'
 }): Promise<CachedResult<T>> {
-  const mode = {
-    refresh: Boolean(options.mode?.refresh),
-    cacheOnly: Boolean(options.mode?.cacheOnly) || !Boolean(options.mode?.refresh),
-  }
-  const key =
-    typeof options.key === 'string'
-      ? options.key
-      : buildCacheKey(options.key.prefix, options.key.parts)
-  const ttlMs = options.ttlMs ?? CacheTtl.awsLookup
-  const tags = options.tags ?? []
-
-  if (!mode.refresh) {
-    const cached = globalCache.get<T>(key)
-    if (cached !== undefined) {
-      return {
-        value: cached,
-        hit: true,
-        meta: { cache: true, cached: true, source: 'cache' },
-      }
-    }
-    if (mode.cacheOnly) {
-      return {
-        value: options.emptyOnMiss,
-        hit: false,
-        meta: { cache: false, cached: false, source: 'cache_miss' },
-      }
-    }
-  }
-
-  const value = await options.loader()
-  globalCache.set(key, value, ttlMs, tags)
-  return {
-    value,
-    hit: false,
-    meta: { cache: false, cached: false, source: 'aws' },
-  }
+  const result = await cacheManager.getOrLoad<T>({
+    key: options.key,
+    tags: options.tags,
+    ttlMs: options.ttlMs ?? CacheTtl.awsLookup,
+    mode: options.mode,
+    emptyOnMiss: options.emptyOnMiss,
+    loader: options.loader,
+    store: options.store ?? 'layered',
+    namespace: 'aws',
+  })
+  return mapResult(result)
 }
 
-export function invalidateAwsCache(tags: string[]): void {
-  globalCache.invalidateTags(tags)
+export async function invalidateAwsCache(tags: string[]): Promise<void> {
+  await cacheManager.invalidate({ tags, namespace: 'aws', store: 'all' })
 }
 
-export { buildCacheKey, globalCache }
+export { buildCacheKey, cacheManager, globalCache } from './cache-manager.js'
