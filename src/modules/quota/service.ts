@@ -1,10 +1,7 @@
-
-import { globalCache } from '../../lib/cache/cache-service.js'
+import { awsAccountTags, CacheTtl, withAwsCache, type CacheReadMode } from '../../lib/cache/aws-cache.js'
 import * as v from '../../lib/utils/aws-validator.js'
 import { AccountService } from '../account/service.js'
 import { QuotaProvider } from '../../lib/aws/providers/quota-provider.js'
-
-const TTL = 10 * 60 * 1000
 
 export class QuotaService {
   constructor(
@@ -12,18 +9,21 @@ export class QuotaService {
     private readonly provider = new QuotaProvider(),
   ) {}
 
-  async vcpuQuota(body: Record<string, unknown>, refresh = false) {
+  async vcpuQuota(body: Record<string, unknown>, mode: CacheReadMode = {}) {
     v.required(body, ['account_id', 'region'])
     const accountId = v.accountId(String(body.account_id))
     const region = v.region(String(body.region))
     const account = await this.accounts.requireAccount(accountId)
-    const cacheKey = `aws:quota:vcpu:${accountId}:${region}`
-    if (!refresh) {
-      const cached = globalCache.get<any[]>(cacheKey)
-      if (cached) return { items: cached, meta: { cache: true, source: 'cache' } }
-    }
-    const items = await this.provider.vcpuQuota(account, region)
-    globalCache.set(cacheKey, items, TTL, [`aws:${accountId}`, `aws:quota:${accountId}`])
-    return { items, meta: { cache: false, source: 'aws' } }
+
+    const result = await withAwsCache({
+      key: { prefix: 'aws:quota:vcpu', parts: { account_id: accountId, region } },
+      tags: awsAccountTags(accountId, 'quota'),
+      ttlMs: CacheTtl.awsLookup,
+      mode,
+      emptyOnMiss: [] as any[],
+      loader: () => this.provider.vcpuQuota(account, region),
+    })
+
+    return { items: result.value, meta: result.meta }
   }
 }
