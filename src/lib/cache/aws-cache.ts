@@ -70,9 +70,10 @@ function mapResult<T>(result: CacheResult<T>): CachedResult<T> {
 /**
  * Unified cache read/write helper used by quota/billing/regions (and reusable by others).
  *
- * Default store is layered (memory + file under data/cache/aws):
+ * Default store is memory-only for reconstructable AWS lookups:
  * - refresh=false => only read cache; miss returns empty without calling loader
- * - refresh=true  => call loader, store to memory+file, return fresh data
+ * - refresh=true  => call loader, store in memory, return fresh data
+ * Restart clears cache; user refreshes again when needed.
  */
 export async function withAwsCache<T>(options: {
   key: string | { prefix: string; parts: Record<string, unknown> }
@@ -81,7 +82,7 @@ export async function withAwsCache<T>(options: {
   mode?: CacheReadMode
   emptyOnMiss: T
   loader: () => Promise<T>
-  /** Defaults to layered so restart can still serve last refresh. */
+  /** Defaults to memory for reconstructable lookup data. */
   store?: 'memory' | 'file' | 'layered'
 }): Promise<CachedResult<T>> {
   const result = await cacheManager.getOrLoad<T>({
@@ -91,7 +92,7 @@ export async function withAwsCache<T>(options: {
     mode: options.mode,
     emptyOnMiss: options.emptyOnMiss,
     loader: options.loader,
-    store: options.store ?? 'layered',
+    store: options.store ?? 'memory',
     namespace: 'aws',
   })
   return mapResult(result)
