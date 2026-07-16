@@ -5,8 +5,7 @@ export type { CacheReadMode }
 export type CacheMeta = {
   cache: boolean
   cached: boolean
-  source: 'cache' | 'cache_miss' | 'aws' | 'local' | 'memory' | 'file' | 'loader' | 'miss'
-  store?: 'memory' | 'file' | 'layered'
+  source: 'cache' | 'cache_miss' | 'aws' | 'local' | 'memory' | 'loader' | 'miss'
 }
 
 export type CachedResult<T> = {
@@ -47,7 +46,7 @@ export function awsAccountTags(accountId: string, ...extra: string[]): string[] 
 
 function mapResult<T>(result: CacheResult<T>): CachedResult<T> {
   const source =
-    result.meta.source === 'memory' || result.meta.source === 'file'
+    result.meta.source === 'memory'
       ? 'cache'
       : result.meta.source === 'loader'
         ? 'aws'
@@ -62,28 +61,22 @@ function mapResult<T>(result: CacheResult<T>): CachedResult<T> {
       cache: result.meta.cache,
       cached: result.meta.cached,
       source,
-      store: result.meta.store,
     },
   }
 }
 
 /**
- * Unified cache read/write helper used by quota/billing/regions (and reusable by others).
- *
- * Default store is memory-only for reconstructable AWS lookups:
- * - refresh=false => only read cache; miss returns empty without calling loader
- * - refresh=true  => call loader, store in memory, return fresh data
- * Restart clears cache; user refreshes again when needed.
+ * Memory-only helper for reconstructable AWS lookups / local list hot cache.
+ * - refresh=false => only read memory; miss returns empty without calling loader when cacheOnly
+ * - refresh=true  => call loader and store in memory
  */
 export async function withAwsCache<T>(options: {
   key: string | { prefix: string; parts: Record<string, unknown> }
   tags?: string[]
   ttlMs?: number
   mode?: CacheReadMode
-  emptyOnMiss: T
+  emptyOnMiss?: T
   loader: () => Promise<T>
-  /** Defaults to memory for reconstructable lookup data. */
-  store?: 'memory' | 'file' | 'layered'
 }): Promise<CachedResult<T>> {
   const result = await cacheManager.getOrLoad<T>({
     key: options.key,
@@ -92,14 +85,12 @@ export async function withAwsCache<T>(options: {
     mode: options.mode,
     emptyOnMiss: options.emptyOnMiss,
     loader: options.loader,
-    store: options.store ?? 'memory',
-    namespace: 'aws',
   })
   return mapResult(result)
 }
 
-export async function invalidateAwsCache(tags: string[]): Promise<void> {
-  await cacheManager.invalidate({ tags, namespace: 'aws', store: 'all' })
+export function invalidateAwsCache(tags: string[]): void {
+  cacheManager.invalidate({ tags })
 }
 
 export { buildCacheKey, cacheManager, globalCache } from './cache-manager.js'

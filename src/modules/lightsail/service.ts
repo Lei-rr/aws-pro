@@ -1,14 +1,12 @@
 
 import { ApiError } from '../../lib/http/api-error.js'
-import { globalCache } from '../../lib/cache/cache-service.js'
+import { CacheTtl, invalidateAwsCache, withAwsCache } from '../../lib/cache/aws-cache.js'
 import * as v from '../../lib/utils/aws-validator.js'
 import type { LightsailInstance } from '../../types/aws.js'
 import { LightsailProvider } from '../../lib/aws/providers/lightsail-provider.js'
 import { LightsailBundleGateway } from '../../lib/aws/providers/lightsail-bundle-gateway.js'
 import { LightsailInstanceRepository } from './repository.js'
 import { AccountService } from '../account/service.js'
-
-const TTL = 5 * 60 * 1000
 
 export class LightsailService {
   constructor(
@@ -20,15 +18,23 @@ export class LightsailService {
 
   async listCached(accountId?: string, region?: string) {
     const filters = this.normalizeListFilters(accountId, region)
-    const cacheKey = `lightsail.list:${filters.account_id ?? ''}:${filters.region ?? ''}`
-    const cached = globalCache.get<LightsailInstance[]>(cacheKey)
-    if (cached) return { items: cached, meta: { cache: true, source: 'cache' } }
-    let items = await this.instances.all()
-    if (filters.account_id) items = items.filter((i) => i.account_id === filters.account_id)
-    if (filters.region) items = items.filter((i) => i.region === filters.region)
-    items = [...items].sort((a, b) => `${a.zone}|${a.name}`.localeCompare(`${b.zone}|${b.name}`))
-    globalCache.set(cacheKey, items, TTL, this.tags(filters.account_id))
-    return { items, meta: { cache: false, source: 'local' } }
+    const result = await withAwsCache<LightsailInstance[]>({
+      key: { prefix: 'aws:lightsail:list', parts: { account_id: filters.account_id, region: filters.region } },
+      tags: this.tags(filters.account_id),
+      ttlMs: CacheTtl.instanceList,
+      // Local JSON is source of truth; memory only avoids re-reading/filtering every request.
+      mode: { refresh: false, cacheOnly: false },
+      loader: async () => {
+        let items = await this.instances.all()
+        if (filters.account_id) items = items.filter((i) => i.account_id === filters.account_id)
+        if (filters.region) items = items.filter((i) => i.region === filters.region)
+        return [...items].sort((a, b) => `${a.zone}|${a.name}`.localeCompare(`${b.zone}|${b.name}`))
+      },
+    })
+    return {
+      items: result.value,
+      meta: { cache: result.hit, source: result.hit ? 'cache' : 'local' },
+    }
   }
 
   async sync(accountId: string, region: string) {
@@ -55,7 +61,7 @@ export class LightsailService {
       }
     })
     await this.instances.replaceScope(account.id, region, synced)
-    globalCache.invalidateTags(this.tags(account.id))
+    invalidateAwsCache(this.tags(account.id))
     return { instances: synced, count: synced.length, account_id: account.id, region, warnings }
   }
 
@@ -78,7 +84,7 @@ export class LightsailService {
     region = v.region(region)
     const normalized = this.normalizeCreate(data)
     await this.provider.createInstance(account, region, normalized)
-    globalCache.invalidateTags(this.tags(account.id))
+    invalidateAwsCache(this.tags(account.id))
     return this.sync(account.id, region)
   }
 
@@ -88,7 +94,7 @@ export class LightsailService {
     instanceName = v.instanceName(instanceName)
     const updated = await this.instances.updateRemark(accountId, region, instanceName, remark.trim())
     if (!updated) throw new ApiError('instance_not_found', 'Instance not found', 404, { instance: instanceName })
-    globalCache.invalidateTags(this.tags(accountId))
+    invalidateAwsCache(this.tags(accountId))
     return updated
   }
 
@@ -122,7 +128,7 @@ export class LightsailService {
       default:
         throw new ApiError('lightsail_action_invalid', 'Invalid Lightsail action', 422, { action })
     }
-    globalCache.invalidateTags(this.tags(account.id))
+    invalidateAwsCache(this.tags(account.id))
     return `${action} submitted`
   }
 
