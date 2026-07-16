@@ -24,6 +24,7 @@ export class LightsailService {
       ttlMs: CacheTtl.instanceList,
       // Local JSON is source of truth; memory only avoids re-reading/filtering every request.
       mode: { refresh: false, cacheOnly: false },
+      sourceOnLoad: 'local',
       loader: async () => {
         let items = await this.instances.all()
         if (filters.account_id) items = items.filter((i) => i.account_id === filters.account_id)
@@ -33,7 +34,7 @@ export class LightsailService {
     })
     return {
       items: result.value,
-      meta: { cache: result.hit, source: result.hit ? 'cache' : 'local' },
+      meta: result.meta,
     }
   }
 

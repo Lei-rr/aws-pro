@@ -47,6 +47,7 @@ export class Ec2Service {
       tags: this.tags(filters.account_id),
       ttlMs: CacheTtl.instanceList,
       mode: { refresh: false, cacheOnly: false },
+      sourceOnLoad: 'local',
       loader: async () => {
         let items = await this.instances.all()
         if (filters.account_id) items = items.filter((i) => i.account_id === filters.account_id)
@@ -56,7 +57,7 @@ export class Ec2Service {
     })
     return {
       items: result.value,
-      meta: { cache: result.hit, source: result.hit ? 'cache' : 'local' },
+      meta: result.meta,
     }
   }
 
