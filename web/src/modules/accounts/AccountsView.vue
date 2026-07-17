@@ -19,7 +19,24 @@
                     </template>
                     <template v-else-if="column.key === 'remark'">{{ record.remark || '-' }}</template>
                     <template v-else-if="column.key === 'actions'">
-                        <table-actions :items="[{ key: 'delete', label: '删除', danger: true }]" @edit="openEdit(record)" @select="handleAction(record, $event)" />
+                        <a-space size="small">
+                            <a-button type="link" size="small" @click="openEdit(record)">编辑</a-button>
+                            <a-popconfirm
+                                title="确定删除此服务商？"
+                                :description="`将同时删除 ${record.id} 的相关实例缓存。`"
+                                ok-text="删除"
+                                cancel-text="取消"
+                                @confirm="remove(record)"
+                            >
+                                <a-button
+                                    type="link"
+                                    danger
+                                    size="small"
+                                    :loading="deletingId === record.id"
+                                    :disabled="Boolean(deletingId)"
+                                >删除</a-button>
+                            </a-popconfirm>
+                        </a-space>
                     </template>
                 </template>
             </a-table>
@@ -42,18 +59,17 @@
 
 <script>
 import { accountApi } from '../../shared/api/accounts.js';
-import { message, modal } from '../../shared/plugins/antDesignVue.js';
-import TableActions from '../../shared/components/TableActions.vue';
+import { message } from '../../shared/plugins/antDesignVue.js';
 import { errorMessage } from '../../shared/utils/errors.js';
 import { tablePagination } from '../../shared/utils/pagination.js';
 
 export default {
     name: 'AccountsView',
-    components: { TableActions },
     data() {
         return {
             loading: false,
             saving: false,
+            deletingId: '',
             dialogVisible: false,
             form: this.emptyForm(),
             keyword: '',
@@ -136,27 +152,19 @@ export default {
                 this.saving = false;
             }
         },
-        remove(row) {
-            modal.confirm({
-                title: '删除账号',
-                content: `确定删除账号 ${row.id}？相关实例缓存也会删除。`,
-                okText: '删除',
-                okType: 'danger',
-                cancelText: '取消',
-                onOk: async () => {
-                    try {
-                        await accountApi.remove(row.id);
-                        message.success('账号已删除');
-                        window.dispatchEvent(new CustomEvent('accounts-updated'));
-                        await this.load();
-                    } catch (e) {
-                        message.error(errorMessage(e, '账号删除失败'));
-                    }
-                }
-            });
-        },
-        handleAction(row, key) {
-            if (key === 'delete') this.remove(row);
+        async remove(row) {
+            if (this.deletingId) return;
+            this.deletingId = row.id;
+            try {
+                await accountApi.remove(row.id);
+                message.success('服务商已删除');
+                window.dispatchEvent(new CustomEvent('accounts-updated'));
+                await this.load();
+            } catch (e) {
+                message.error(errorMessage(e, '服务商删除失败'));
+            } finally {
+                this.deletingId = '';
+            }
         }
     }
     };
