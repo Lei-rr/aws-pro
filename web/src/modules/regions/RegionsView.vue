@@ -38,6 +38,7 @@ import { message, modal } from '../../shared/plugins/antDesignVue.js';
 import { regionName } from '../../shared/utils/format.js';
 import { errorMessage } from '../../shared/utils/errors.js';
 import { tablePagination } from '../../shared/utils/pagination.js';
+import { apiList, apiObject } from '../../shared/utils/api-data.js';
 
 const STATUS_META = {
     ENABLED: { text: '已启用', color: 'success' },
@@ -123,10 +124,11 @@ export default {
             try {
                 const response = await regionsApi.list(this.accountId, { cache_only: true });
                 if (token !== this.loadRequestToken) return;
-                const items = response.data.items || response.data || [];
+                const payload = apiObject(response);
+                const items = apiList(response, ['items']);
                 if (items.length > 0) {
                     this.items = items;
-                    this.meta = response.data.meta || { cached: true };
+                    this.meta = payload.meta || { cached: true };
                 } else {
                     this.meta = { cached: false };
                 }
@@ -144,8 +146,9 @@ export default {
             try {
                 const response = await regionsApi.list(this.accountId, { refresh });
                 if (token !== this.loadRequestToken) return;
-                this.items = response.data.items || response.data || [];
-                this.meta = response.data.meta || { cached: false };
+                const payload = apiObject(response);
+                this.items = apiList(response, ['items']);
+                this.meta = payload.meta || { cached: false };
             } catch (error) {
                 if (token !== this.loadRequestToken) return;
                 message.error(errorMessage(error, '查询区域失败'));

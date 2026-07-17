@@ -88,6 +88,7 @@ import { accountApi } from '../../shared/api/accounts.js'
 import { message } from '../../shared/plugins/antDesignVue.js'
 import { errorMessage } from '../../shared/utils/errors.js'
 import { tablePagination } from '../../shared/utils/pagination.js'
+import { apiObject } from '../../shared/utils/api-data.js'
 
 function asAccountList(payload) {
   if (Array.isArray(payload)) return payload
@@ -191,7 +192,7 @@ export default {
           delete payload.secret_key
         }
         const response = await accountApi.save(payload)
-        const saved = response?.data && typeof response.data === 'object' ? response.data : null
+        const saved = apiObject(response, null)
 
         // Optimistic local update so UI changes even if a later reload is flaky.
         if (payload.original_id) {

@@ -12,11 +12,15 @@ export async function healthShow(_request: FastifyRequest, reply: FastifyReply) 
   try {
     await fs.access(dataDir)
     writable = true
-  } catch {}
+  } catch {
+    writable = false
+  }
   try {
     await fs.access(path.join(dataDir, 'config.json'))
     configReadable = true
-  } catch {}
+  } catch {
+    configReadable = false
+  }
   return reply.send(
     success({
       status: 'ok',

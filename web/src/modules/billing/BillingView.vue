@@ -32,6 +32,7 @@ import { billingApi } from './api.js';
 import { errorMessage } from '../../shared/utils/errors.js';
 import { message } from '../../shared/plugins/antDesignVue.js';
 import { tablePagination } from '../../shared/utils/pagination.js';
+import { apiList, apiObject } from '../../shared/utils/api-data.js';
 
 export default {
     name: 'BillingView',
@@ -108,7 +109,7 @@ export default {
                     { cache_only: true }
                 );
                 if (token !== this.loadRequestToken) return;
-                const billing = response.data;
+                const billing = apiObject(response);
                 if (billing && billing.items && billing.items.length > 0) {
                     this.bills = billing.items;
                     this.summary = { total_cost: billing.total_cost || 0, total_credit: billing.total_credit || 0 };
@@ -133,7 +134,7 @@ export default {
                     { refresh }
                 );
                 if (token !== this.loadRequestToken) return;
-                const billing = response.data;
+                const billing = apiObject(response);
                 this.bills = billing.items || [];
                 this.summary = { total_cost: billing.total_cost || 0, total_credit: billing.total_credit || 0 };
                 this.meta = billing.meta || { cached: false };

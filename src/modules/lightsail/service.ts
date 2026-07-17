@@ -10,7 +10,7 @@ import { AccountService } from '../account/service.js'
 
 export class LightsailService {
   constructor(
-    private readonly accounts = new AccountService(),
+    private readonly accounts: AccountService = new AccountService(),
     private readonly provider = new LightsailProvider(),
     private readonly bundles = new LightsailBundleGateway(),
     private readonly instances = new LightsailInstanceRepository(),
@@ -45,12 +45,12 @@ export class LightsailService {
     for (const item of await this.instances.all()) {
       remarks.set(`${item.account_id}|${item.region}|${item.name}`, item.remark ?? '')
     }
-    let bundleSpecs: Record<string, any> = {}
+    const bundleSpecs: Record<string, any> = {}
     const warnings: any[] = []
     try {
       const all = await this.bundles.bundles(account, region)
       for (const [id, meta] of Object.entries(all)) bundleSpecs[id] = (meta as any).specs ?? {}
-    } catch (error) {
+    } catch {
       warnings.push({ code: 'bundle_specs_unavailable', message: '套餐规格暂未获取，实例同步已继续' })
     }
     const synced = (await this.provider.instances(account, region)).map((item) => {

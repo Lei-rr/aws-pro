@@ -32,6 +32,7 @@ import { regionName } from '../../shared/utils/format.js';
 import { errorMessage } from '../../shared/utils/errors.js';
 import { message } from '../../shared/plugins/antDesignVue.js';
 import { tablePagination } from '../../shared/utils/pagination.js';
+import { apiList, apiObject } from '../../shared/utils/api-data.js';
 
 export default {
     name: 'QuotaView',
@@ -98,10 +99,10 @@ export default {
                     { cache_only: true }
                 );
                 if (token !== this.loadRequestToken) return;
-                const items = response.data.items || response.data || [];
+                const items = apiList(response, ['items']);
                 if (items.length > 0) {
                     this.items = items;
-                    this.meta = response.data.meta || { cached: true };
+                    this.meta = apiObject(response).meta || { cached: true };
                 } else {
                     this.meta = { cached: false };
                 }
@@ -122,8 +123,8 @@ export default {
                     { refresh }
                 );
                 if (token !== this.loadRequestToken) return;
-                this.items = response.data.items || response.data || [];
-                this.meta = response.data.meta || { cached: false };
+                this.items = apiList(response, ['items']);
+                this.meta = apiObject(response).meta || { cached: false };
             } catch (e) {
                 if (token !== this.loadRequestToken) return;
                 message.error(errorMessage(e, '查询失败'));

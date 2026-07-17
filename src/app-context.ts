@@ -1,4 +1,11 @@
-
+/**
+ * Composition root — WIRING ONLY.
+ *
+ * Rules:
+ * - new services here; no business rules
+ * - controllers use request.server.ctx.* only
+ * - Fastify plugins live in src/plugins/* only
+ */
 import type { AppConfig } from './config/app.js'
 import { AppConfigRepository } from './lib/auth/app-config-repository.js'
 import { AuthConfig } from './lib/auth/auth-config.js'
@@ -12,18 +19,23 @@ import { BillingService } from './modules/billing/service.js'
 import { NewbieTaskService } from './modules/newbie/service.js'
 import { SystemConfigRepository } from './modules/system/config-repository.js'
 
-export function createAppContext(config: AppConfig) {
+export async function createAppContext(config: AppConfig) {
   const appConfigRepository = new AppConfigRepository()
   const authConfig = new AuthConfig(appConfigRepository)
   const sessionService = new SessionService(authConfig)
   const systemConfigRepository = new SystemConfigRepository()
+
+  // Single instances so repositories / background jobs share memory + file views.
   const accountService = new AccountService()
-  const lightsailService = new LightsailService()
-  const ec2Service = new Ec2Service()
-  const regionService = new RegionService()
-  const quotaService = new QuotaService()
-  const billingService = new BillingService()
-  const newbieTaskService = new NewbieTaskService()
+  const lightsailService = new LightsailService(accountService)
+  const ec2Service = new Ec2Service(accountService)
+  const regionService = new RegionService(accountService)
+  const quotaService = new QuotaService(accountService)
+  const billingService = new BillingService(accountService)
+  const newbieTaskService = new NewbieTaskService(accountService)
+
+  // Resume unfinished newbie tasks after process restart.
+  await newbieTaskService.resumeActiveJobs()
 
   return {
     config,
@@ -39,4 +51,10 @@ export function createAppContext(config: AppConfig) {
   }
 }
 
-export type AppContext = ReturnType<typeof createAppContext>
+export type AppContext = Awaited<ReturnType<typeof createAppContext>>
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    ctx: AppContext
+  }
+}

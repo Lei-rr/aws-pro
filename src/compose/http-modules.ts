@@ -1,0 +1,42 @@
+import type { FastifyInstance } from 'fastify'
+import { authRequired } from '../modules/auth/hooks/auth-required.js'
+import { routes as systemPublicRoutes, protectedRoutes as systemProtectedRoutes } from '../modules/system/routes.js'
+import { routes as authRoutes } from '../modules/auth/routes.js'
+import { routes as accountRoutes } from '../modules/account/routes.js'
+import { routes as lightsailRoutes } from '../modules/lightsail/routes.js'
+import { routes as ec2Routes } from '../modules/ec2/routes.js'
+import { routes as regionRoutes } from '../modules/region/routes.js'
+import { routes as quotaRoutes } from '../modules/quota/routes.js'
+import { routes as billingRoutes } from '../modules/billing/routes.js'
+import { routes as newbieRoutes } from '../modules/newbie/routes.js'
+
+/**
+ * HTTP route catalog (append-only).
+ *
+ * Module = business folder under src/modules/* with routes.ts
+ * Plugin  = ONLY src/plugins/* (official Fastify shell)
+ *
+ * API prefix stays `/api` (frontend baseURL) — not /api/v1.
+ *
+ * Auth model:
+ * - public: health + session
+ * - one authenticated envelope for all business APIs (including /config)
+ */
+export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
+  // Public
+  await app.register(systemPublicRoutes)
+  await app.register(authRoutes)
+
+  // Authenticated envelope — single place for authRequired
+  await app.register(async function authenticatedApi(scope) {
+    scope.addHook('preHandler', authRequired)
+    await scope.register(systemProtectedRoutes)
+    await scope.register(accountRoutes)
+    await scope.register(lightsailRoutes)
+    await scope.register(ec2Routes)
+    await scope.register(regionRoutes)
+    await scope.register(quotaRoutes)
+    await scope.register(billingRoutes)
+    await scope.register(newbieRoutes)
+  })
+}

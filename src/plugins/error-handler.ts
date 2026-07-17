@@ -3,12 +3,25 @@ import fp from 'fastify-plugin'
 import { ApiError } from '../lib/http/api-error.js'
 import { error } from '../lib/http/api-response.js'
 
+/**
+ * Global not-found + error handlers.
+ * Depends on `static` so reply.sendFile works for SPA fallback when web/dist exists.
+ */
 const errorHandlerPluginImpl: FastifyPluginAsync = async (app) => {
   app.setNotFoundHandler(async (request, reply) => {
     if (request.url.startsWith('/api/')) {
       return reply.status(404).send(error('not_found', 404, 'not_found'))
     }
-    return reply.sendFile('index.html')
+
+    const sendFile = (reply as { sendFile?: (file: string) => unknown }).sendFile
+    if (typeof sendFile === 'function') {
+      try {
+        return await sendFile.call(reply, 'index.html')
+      } catch {
+        // fall through
+      }
+    }
+    return reply.status(404).type('text/plain').send('Not Found')
   })
 
   app.setErrorHandler(async (err: FastifyError, request, reply) => {
@@ -37,4 +50,5 @@ const errorHandlerPluginImpl: FastifyPluginAsync = async (app) => {
 export const errorHandlerPlugin = fp(errorHandlerPluginImpl, {
   name: 'error-handler',
   fastify: '5.x',
+  dependencies: ['static'],
 })

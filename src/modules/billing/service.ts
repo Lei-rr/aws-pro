@@ -12,7 +12,7 @@ type BillingCacheValue = {
 
 export class BillingService {
   constructor(
-    private readonly accounts = new AccountService(),
+    private readonly accounts: AccountService = new AccountService(),
     private readonly billing = new BillingProvider(),
   ) {}
 

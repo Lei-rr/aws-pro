@@ -4,6 +4,7 @@ import { regionName } from '../../../shared/utils/format.js';
 import { copyText } from '../../../shared/utils/clipboard.js';
 import { errorMessage } from '../../../shared/utils/errors.js';
 import { message, modal } from '../../../shared/plugins/antDesignVue.js';
+import { apiList, apiObject } from '../../../shared/utils/api-data.js';
 
 export function lightsailState() {
     return {
@@ -69,9 +70,9 @@ export const lightsailMethods = {
     },
     async loadConfig() {
         try {
-            const config = await configApi.all();
-            this.regions = config.data.regions || {};
-            this.blueprints = config.data.blueprints || {};
+            const config = apiObject(await configApi.all());
+            this.regions = config.regions || {};
+            this.blueprints = config.blueprints || {};
         } catch (e) {
             this.regions = {};
             this.blueprints = {};
@@ -84,7 +85,7 @@ export const lightsailMethods = {
         try {
             const response = await lightsailApi.instances();
             if (token !== this.loadRequestToken) return;
-            this.instances = response.data.items || response.data || [];
+            this.instances = apiList(response, ['items']);
         } catch (e) {
             if (token !== this.loadRequestToken) return;
             this.instances = [];
@@ -104,8 +105,7 @@ export const lightsailMethods = {
         }
         this.syncing = true;
         try {
-            const response = await this.syncScope(this.accountId, this.region);
-            const result = response.data;
+            const result = apiObject(await this.syncScope(this.accountId, this.region));
             const count = typeof result.count === 'number' ? result.count : 0;
             message.success(`同步完成，共 ${count} 台实例`);
             for (const warning of result.warnings || []) {
@@ -148,7 +148,7 @@ export const lightsailMethods = {
         try {
             const response = await lightsailApi.createOptions({ account_id: this.accountId, region: this.region });
             if (token !== this.createConfigRequestToken) return;
-            this.createOptions = response.data;
+            this.createOptions = apiObject(response);
             this.createForm.zone = this.createOptions.zones[0] || '';
             this.ensureCreateBundle();
         } catch (e) {
@@ -248,7 +248,7 @@ export const lightsailMethods = {
                 region: row.region,
                 instance_name: row.name
             });
-            const result = response.data;
+            const result = apiObject(response);
             message.success(result.message || '命令已提交');
             await this.syncScope(row.account_id, row.region);
             window.dispatchEvent(new CustomEvent('instances-updated'));
@@ -281,7 +281,7 @@ export const lightsailMethods = {
                 instance_name: this.remarkForm.name,
                 remark: this.remarkForm.remark
             });
-            const updated = response.data;
+            const updated = apiObject(response);
             this.instances = this.instances.map((item) => {
                 if (item.account_id === updated.account_id && item.region === updated.region && item.name === updated.name) {
                     return updated;

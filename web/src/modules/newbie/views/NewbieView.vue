@@ -42,6 +42,7 @@ import AccountSelect from '../../../shared/components/AccountSelect.vue'
 import { newbieApi } from '../api.js'
 import { errorMessage } from '../../../shared/utils/errors.js'
 import { message, modal } from '../../../shared/plugins/antDesignVue.js'
+import { apiList, apiObject } from '../../../shared/utils/api-data.js';
 
 export default {
   name: 'NewbieView',
@@ -96,7 +97,7 @@ export default {
     async restoreActiveTask() {
       try {
         const response = await newbieApi.getActiveTask()
-        const task = response.data
+        const task = apiObject(response)
         if (!task?.id) return
         this.task = task
         this.accountId = task.account_id || this.accountId
@@ -135,7 +136,7 @@ export default {
       this.logCursor = 0
       try {
         const response = await newbieApi.createTask({ account_id: this.accountId, step: this.step })
-        this.task = response.data
+        this.task = apiObject(response)
         this.running = true
         this.watchTask(this.task.id)
       } catch (e) {
@@ -172,7 +173,7 @@ export default {
     async pollTask(taskId) {
       try {
         const response = await newbieApi.getTask(taskId)
-        const task = response.data
+        const task = apiObject(response)
         this.task = task
         const logs = Array.isArray(task.logs) ? task.logs : []
         while (this.logCursor < logs.length) {
@@ -226,7 +227,7 @@ export default {
       if (!this.task?.id) return
       try {
         const response = await newbieApi.cancelTask(this.task.id)
-        this.task = response.data
+        this.task = apiObject(response)
         this.appendLog('已发送终止请求，等待当前步骤停止并清理资源...')
       } catch (e) {
         message.error(errorMessage(e, '终止新手任务失败'))

@@ -4,6 +4,7 @@ import { regionName } from '../../../shared/utils/format.js';
 import { copyText } from '../../../shared/utils/clipboard.js';
 import { errorMessage } from '../../../shared/utils/errors.js';
 import { message, modal } from '../../../shared/plugins/antDesignVue.js';
+import { apiList, apiObject } from '../../../shared/utils/api-data.js';
 
 export function ec2State() {
     return {
@@ -74,8 +75,8 @@ export const ec2Methods = {
         try {
             const [optionsResponse, configResponse] = await Promise.all([ec2Api.createOptions(), configApi.all()]);
             if (token !== this.configRequestToken) return;
-            this.options = optionsResponse.data || { amis: {}, instance_types: {} };
-            this.regions = configResponse.data.ec2_regions || configResponse.data.regions || {};
+            this.options = apiObject(optionsResponse) || { amis: {}, instance_types: {} };
+            this.regions = apiObject(configResponse).ec2_regions || apiObject(configResponse).regions || {};
             if (!this.region) {
                 this.region = Object.keys(this.regions)[0] || 'us-east-1';
             }
@@ -94,7 +95,7 @@ export const ec2Methods = {
         try {
             const response = await ec2Api.instances();
             if (token !== this.loadRequestToken) return;
-            this.instances = response.data.items || response.data || [];
+            this.instances = apiList(response, ['items']);
         } catch (e) {
             if (token !== this.loadRequestToken) return;
             this.instances = [];
@@ -114,8 +115,8 @@ export const ec2Methods = {
         }
         this.syncing = true;
         try {
-            const response = await this.syncScope(this.accountId, this.region);
-            message.success(`同步完成，共 ${response.data.count || 0} 台 EC2`);
+            const result = apiObject(await this.syncScope(this.accountId, this.region));
+            message.success(`同步完成，共 ${result.count || 0} 台 EC2`);
             await this.loadInstances();
         } catch (e) {
             message.error(errorMessage(e, '同步 EC2 失败'));
@@ -202,7 +203,7 @@ export const ec2Methods = {
                 action,
                 confirm: action
             });
-            message.success(response.data.message || '命令已提交');
+            message.success(apiObject(response).message || '命令已提交');
             await this.syncScope(row.account_id, row.region);
             await this.loadInstances();
         } catch (e) {
@@ -231,7 +232,7 @@ export const ec2Methods = {
                 instance_id: this.remarkForm.instance_id,
                 remark: this.remarkForm.remark
             });
-            const updated = response.data;
+            const updated = apiObject(response);
             this.instances = this.instances.map((item) => {
                 if (item.account_id === updated.account_id && item.region === updated.region && item.id === updated.id) {
                     return updated;

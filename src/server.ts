@@ -4,6 +4,7 @@ import { loadAppConfig, type AppConfig } from './config/app.js'
 import { setDataRoot } from './lib/storage/json-store.js'
 import { setDefaultHttpTimeout } from './lib/http/base-gateway.js'
 import { globalCache } from './lib/cache/cache-service.js'
+import { ensureDataDirs } from './platform/ensure-data-dirs.js'
 
 function parseCliOverrides(): Partial<AppConfig> {
   const overrides: Partial<AppConfig> = {}
@@ -41,7 +42,7 @@ function registerShutdownHooks(app: FastifyInstance) {
         (err) => {
           app.log.error(err)
           process.exit(1)
-        }
+        },
       )
     })
   }
@@ -57,6 +58,7 @@ const config = (() => {
 setDataRoot(config.dataDir)
 setDefaultHttpTimeout(config.httpTimeoutMs)
 globalCache.updateOptions({ maxEntries: config.cacheMaxEntries, sweepIntervalMs: config.cacheSweepIntervalMs })
+await ensureDataDirs(config.dataDir)
 
 const app = await buildApp(config)
 

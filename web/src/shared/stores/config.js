@@ -1,4 +1,5 @@
 import { configApi } from '../api/config.js';
+import { apiObject } from '../utils/api-data.js';
 
 import { defineStore } from 'pinia'
 
@@ -19,7 +20,7 @@ export const useConfigStore = defineStore('config', {
                 this.error = null;
                 configPromise = configApi.all()
                     .then((response) => {
-                        this.config = response.data;
+                        this.config = apiObject(response);
                         return this.config;
                     })
                     .catch((error) => {

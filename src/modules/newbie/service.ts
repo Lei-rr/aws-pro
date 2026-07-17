@@ -9,10 +9,19 @@ export class NewbieTaskService {
   private readonly jobs = new Map<string, Promise<void>>()
 
   constructor(
-    private readonly accounts = new AccountService(),
+    private readonly accounts: AccountService = new AccountService(),
     private readonly tasks = new NewbieTaskRepository(),
     private readonly runner = new NewbieTaskRunner(),
   ) {}
+
+  /** Resume unfinished tasks after process restart (idempotent). */
+  async resumeActiveJobs(): Promise<void> {
+    await this.tasks.pruneFinished()
+    const task = await this.tasks.findActive()
+    if (task && (task.status === 'pending' || task.status === 'running' || task.status === 'cancelling')) {
+      this.ensureBackground(task.id)
+    }
+  }
 
   async create(body: Record<string, unknown>) {
     v.required(body, ['account_id'])
