@@ -45,10 +45,7 @@
                         <a-button type="link" size="small" style="padding: 0" @click="$emit('remark', record)">{{ record.remark || '添加' }}</a-button>
                     </template>
                     <template v-else-if="column.key === 'actions'">
-                        <a-space size="small">
-                            <a-button type="link" size="small" style="padding: 0" @click="$emit('remark', record)">编辑</a-button>
-                            <slot name="actions" :record="record" />
-                        </a-space>
+                        <slot name="actions" :record="record" />
                     </template>
                 </template>
             </a-table>
@@ -127,7 +124,7 @@ export default {
                     onFilter: (value, record) => value === 'yes' ? !!record.static_ip : !record.static_ip
                 },
                 { title: '备注', dataIndex: 'remark', key: 'remark', width: 140, responsive: ['md'] },
-                { title: '操作', key: 'actions', width: 110, align: 'right' }
+                { title: '操作', key: 'actions', width: 90, align: 'right' }
             ];
         }
     },

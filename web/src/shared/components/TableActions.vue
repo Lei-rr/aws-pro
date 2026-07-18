@@ -1,5 +1,5 @@
 <template>
-  <a-space size="small" wrap class="table-actions">
+  <a-space size="small" :wrap="false" class="table-actions">
     <a-button
       v-if="primary"
       type="link"
@@ -21,7 +21,7 @@
       >
     </template>
 
-    <a-dropdown v-if="menuItems.length">
+    <a-dropdown v-if="menuItems.length" :trigger="['click']" :get-popup-container="getPopupContainer">
       <a-button type="link" size="small" :disabled="disabled">更多</a-button>
       <template #overlay>
         <a-menu>
@@ -61,6 +61,9 @@ export default {
     },
   },
   methods: {
+    getPopupContainer() {
+      return document.body
+    },
     select(item) {
       if (!this.disabled && !item.disabled) this.$emit('select', item.key)
     },

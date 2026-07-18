@@ -105,7 +105,7 @@ export default {
         { title: 'Access Key', dataIndex: 'access_key', key: 'access_key', width: 260 },
         { title: 'Secret Key', dataIndex: 'secret_key_masked', key: 'secret_key_masked', width: 180 },
         { title: '备注', dataIndex: 'remark', key: 'remark' },
-        { title: '操作', key: 'actions', width: 150, fixed: 'right' },
+        { title: '操作', key: 'actions', width: 160, fixed: 'right' },
       ],
     }
   },

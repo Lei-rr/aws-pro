@@ -176,10 +176,14 @@ export const lightsailMethods = {
                 account_id: this.accountId,
                 region: this.region
             });
-            message.success('创建命令已提交');
             this.createVisible = false;
-            await this.syncScope(this.accountId, this.region);
-            window.dispatchEvent(new CustomEvent('instances-updated'));
+            message.success('创建命令已提交');
+            try {
+                await this.syncScope(this.accountId, this.region);
+                window.dispatchEvent(new CustomEvent('instances-updated'));
+            } catch (syncError) {
+                message.warning(errorMessage(syncError, '创建成功，但同步列表失败'));
+            }
             await this.loadInstances();
         } catch (e) {
             message.error(errorMessage(e, '创建失败'));

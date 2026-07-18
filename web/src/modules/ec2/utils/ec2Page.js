@@ -141,9 +141,13 @@ export const ec2Methods = {
         this.creating = true;
         try {
             await ec2Api.create({ ...this.createForm, account_id: this.accountId, region: this.region });
-            message.success('EC2 创建命令已提交');
             this.createVisible = false;
-            await this.syncScope(this.accountId, this.region);
+            message.success('EC2 创建命令已提交');
+            try {
+                await this.syncScope(this.accountId, this.region);
+            } catch (syncError) {
+                message.warning(errorMessage(syncError, '创建成功，但同步列表失败'));
+            }
             await this.loadInstances();
         } catch (e) {
             message.error(errorMessage(e, '创建 EC2 失败'));

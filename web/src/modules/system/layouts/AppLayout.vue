@@ -7,13 +7,13 @@
             <a-avatar shape="square" size="small" style="background: #1677ff">A</a-avatar>
             <a-typography-text strong style="font-size: 16px">AWS-PRO</a-typography-text>
           </router-link>
-          <a-dropdown class="app-header-user" :trigger="['click']">
+          <a-dropdown class="app-header-user" :trigger="['click']" :get-popup-container="getPopupContainer">
             <a-button shape="circle" title="管理" aria-label="管理">☰</a-button>
             <template #overlay>
-              <a-menu @click="handleUserMenu">
-                <a-menu-item key="accounts">账号管理</a-menu-item>
+              <a-menu>
+                <a-menu-item key="accounts" @click="handleUserMenu('accounts')">账号管理</a-menu-item>
                 <a-menu-divider />
-                <a-menu-item key="logout" danger>退出</a-menu-item>
+                <a-menu-item key="logout" danger @click="handleUserMenu('logout')">退出</a-menu-item>
               </a-menu>
             </template>
           </a-dropdown>
@@ -59,6 +59,9 @@ export default {
     },
   },
   methods: {
+    getPopupContainer() {
+      return document.body
+    },
     async logout() {
       await authApi.logout().catch(() => {})
       this.$router.replace(appPaths.login)
@@ -67,7 +70,7 @@ export default {
       const path = menuPath(moduleMenuItems, key)
       if (path !== this.$route.path) this.$router.push(path)
     },
-    handleUserMenu({ key }) {
+    handleUserMenu(key) {
       if (key === 'accounts') this.$router.push(appPaths.accounts)
       if (key === 'logout') this.logout()
     },
