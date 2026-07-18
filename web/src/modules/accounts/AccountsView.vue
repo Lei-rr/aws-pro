@@ -1,16 +1,17 @@
 <template>
   <section>
-    <div class="page-toolbar">
-      <div>
-        <a-typography-title :level="3" style="margin-bottom: 4px">{{ pageTitle }}</a-typography-title>
-        <a-typography-text type="secondary">{{ pageHelp }}</a-typography-text>
-      </div>
-      <div class="page-actions">
-        <a-input-search v-model:value="keyword" placeholder="搜索服务商" allow-clear />
-        <a-button :loading="loading" @click="load">刷新</a-button>
+    <ListToolbar
+      :title="pageTitle"
+      :subtitle="pageHelp"
+      :keyword="keyword"
+      search-placeholder="搜索服务商"
+      @update:keyword="keyword = $event"
+    >
+      <template #actions>
+        <a-button :loading="loading" @click="handleRefresh">刷新</a-button>
         <a-button type="primary" @click="openCreate">新增服务商</a-button>
-      </div>
-    </div>
+      </template>
+    </ListToolbar>
 
     <a-table
       :key="tableKey"
@@ -29,25 +30,12 @@
         </template>
         <template v-else-if="column.key === 'remark'">{{ record.remark || '-' }}</template>
         <template v-else-if="column.key === 'actions'">
-          <a-space size="small">
-            <a-button type="link" size="small" @click="openEdit(record)">编辑</a-button>
-            <a-popconfirm
-              title="确定删除此服务商？"
-              :description="`将同时删除 ${record.id} 的相关实例缓存。`"
-              ok-text="删除"
-              cancel-text="取消"
-              :disabled="Boolean(deletingId)"
-              @confirm="() => remove(record)"
-            >
-              <a-button
-                type="link"
-                danger
-                size="small"
-                :loading="deletingId === record.id"
-                :disabled="Boolean(deletingId) && deletingId !== record.id"
-              >删除</a-button>
-            </a-popconfirm>
-          </a-space>
+          <TableActions
+            :disabled="Boolean(deletingId)"
+            :items="[{ key: 'delete', label: '删除', danger: true, inline: true, disabled: Boolean(deletingId) }]"
+            @edit="openEdit(record)"
+            @select="(key) => key === 'delete' && askRemove(record)"
+          />
         </template>
       </template>
     </a-table>
@@ -84,8 +72,10 @@
 </template>
 
 <script>
+import ListToolbar from '../../shared/components/ListToolbar.vue'
+import TableActions from '../../shared/components/TableActions.vue'
 import { accountApi } from '../../shared/api/accounts.js'
-import { message } from '../../shared/plugins/antDesignVue.js'
+import { message, modal } from '../../shared/plugins/antDesignVue.js'
 import { errorMessage } from '../../shared/utils/errors.js'
 import { tablePagination } from '../../shared/utils/pagination.js'
 import { apiObject } from '../../shared/utils/api-data.js'
@@ -98,6 +88,7 @@ function asAccountList(payload) {
 }
 
 export default {
+  components: { ListToolbar, TableActions },
   name: 'AccountsView',
   data() {
     return {
@@ -149,6 +140,10 @@ export default {
       // Always replace with a new array so a-table re-renders reliably.
       this.accounts = Array.isArray(list) ? list.map((row) => ({ ...row })) : []
       this.tableKey += 1
+    },
+    async handleRefresh() {
+      await this.load()
+      message.success('已刷新')
     },
     async load() {
       this.loading = true
@@ -225,6 +220,16 @@ export default {
       } finally {
         this.saving = false
       }
+    },
+    async askRemove(row) {
+      modal.confirm({
+        title: '删除服务商',
+        content: `确认删除 ${row.id}？相关实例缓存也会一并删除。`,
+        okText: '删除',
+        okType: 'danger',
+        cancelText: '取消',
+        onOk: () => this.remove(row),
+      })
     },
     async remove(row) {
       if (this.deletingId) return false

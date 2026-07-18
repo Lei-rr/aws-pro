@@ -1,18 +1,12 @@
 <template>
 
         <section>
-            <div class="page-toolbar">
-                <div>
-                    <a-typography-title :level="3" style="margin-bottom: 4px">区域管理</a-typography-title>
-                    <a-typography-text type="secondary">使用 AWS Account API 查询账号区域启用状态，并开启未启用区域。</a-typography-text>
-                </div>
-                <div class="page-actions">
-                    <a-space wrap class="aws-inline-controls">
-                        <div class="toolbar-control"><account-select v-model="accountId" /></div>
-                        <a-button type="primary" :loading="loading" :disabled="!accountId" @click="query(true)">刷新区域</a-button>
-                    </a-space>
-                </div>
-            </div>
+            <ListToolbar title="区域管理" subtitle="使用 AWS Account API 查询账号区域启用状态，并开启未启用区域。" :show-search="false">
+                <template #actions>
+                    <div class="toolbar-control"><account-select v-model="accountId" /></div>
+                    <a-button type="primary" :loading="loading" :disabled="!accountId" @click="query(true)">刷新区域</a-button>
+                </template>
+            </ListToolbar>
 
             <a-table :row-key="rowKey" :loading="loading" :columns="columns" :data-source="items" :pagination="pagination" size="middle" :scroll="{ x: 610 }" :locale="{ emptyText: '请选择账号后点击刷新按钮查询区域状态。' }">
                 <template #bodyCell="{ column, record }">
@@ -31,6 +25,7 @@
 </template>
 
 <script>
+import ListToolbar from '../../shared/components/ListToolbar.vue'
 import AccountSelect from '../../shared/components/AccountSelect.vue';
 import { loadConfig, useConfigStore } from '../../shared/stores/config.js';
 import { regionsApi } from './api.js';
@@ -50,7 +45,7 @@ const STATUS_META = {
 
 export default {
     name: 'RegionsView',
-    components: { AccountSelect },
+    components: { AccountSelect, ListToolbar },
     data() {
         return {
             loading: false,

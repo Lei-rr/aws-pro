@@ -1,14 +1,11 @@
 <template>
   <div class="stacked-page">
     <section class="operation-toolbar">
-      <div class="page-toolbar operation-titlebar">
-        <div>
-          <a-typography-title :level="3" style="margin-bottom: 4px">新手任务</a-typography-title>
-          <a-typography-text type="secondary"
-            >固定在 us-east-1 执行全部或单项任务。任务在后台运行，页面仅只读拉取日志（可关闭页面后回来继续看）。</a-typography-text
-          >
-        </div>
-      </div>
+      <ListToolbar
+        title="新手任务"
+        subtitle="固定在 us-east-1 执行全部或单项任务。任务在后台运行，页面仅只读拉取日志（可关闭页面后回来继续看）。"
+        :show-search="false"
+      />
       <div class="operation-controls">
         <div class="toolbar-control"><account-select v-model="accountId" /></div>
         <div class="toolbar-control">
@@ -21,6 +18,8 @@
         <a-button :disabled="running" @click="clearLog">清空日志</a-button>
       </div>
     </section>
+
+    <JobProgressAlert :running="running" :text="running ? statusText : ''" tone="info" />
 
     <section class="table-section-card">
       <div class="section-toolbar instance-list-toolbar">
@@ -38,6 +37,8 @@
 </template>
 
 <script>
+import JobProgressAlert from '../../../shared/components/JobProgressAlert.vue'
+import ListToolbar from '../../../shared/components/ListToolbar.vue'
 import AccountSelect from '../../../shared/components/AccountSelect.vue'
 import { newbieApi } from '../api.js'
 import { errorMessage } from '../../../shared/utils/errors.js'
@@ -46,7 +47,7 @@ import { apiList, apiObject } from '../../../shared/utils/api-data.js';
 
 export default {
   name: 'NewbieView',
-  components: { AccountSelect },
+  components: { AccountSelect, ListToolbar, JobProgressAlert },
   data() {
     return {
       accountId: '',

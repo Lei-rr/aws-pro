@@ -1,13 +1,9 @@
 <template>
 
         <section>
-            <div class="page-toolbar">
-                <div>
-                    <a-typography-title :level="3" style="margin-bottom: 4px">控制台</a-typography-title>
-                    <a-typography-text type="secondary">查看 AWS 账号、实例和区域资源概览。</a-typography-text>
-                </div>
-                <div class="page-actions"><a-button :loading="loading" @click="load">刷新</a-button></div>
-            </div>
+            <ListToolbar title="控制台" subtitle="查看 AWS 账号、实例和区域资源概览。" :show-search="false">
+                <template #actions><a-button :loading="loading" @click="load">刷新</a-button></template>
+            </ListToolbar>
             <a-row :gutter="[16, 16]" class="dashboard-stat-grid">
                 <a-col v-for="item in stats" :key="item.label" :xs="12" :lg="6">
                     <a-card hoverable class="dashboard-stat-card">
@@ -53,6 +49,7 @@
 </template>
 
 <script>
+import ListToolbar from '../../../shared/components/ListToolbar.vue'
 import { regionName } from '../../../shared/utils/format.js';
 import { errorMessage } from '../../../shared/utils/errors.js';
 import { message } from '../../../shared/plugins/antDesignVue.js';
@@ -61,6 +58,7 @@ import { loadConfig, useConfigStore } from '../../../shared/stores/config.js';
 import { instanceApi } from '../../../shared/api/instances.js';
 
 export default {
+  components: { ListToolbar },
     name: 'DashboardView',
     data() {
         return {

@@ -2,18 +2,12 @@
 
         <div class="stacked-page">
             <section>
-                <div class="page-toolbar">
-                    <div>
-                        <a-typography-title :level="3" style="margin-bottom: 4px">账单概览</a-typography-title>
-                        <a-typography-text type="secondary">查询最近 12 个完整月和当月费用。</a-typography-text>
-                </div>
-                <div class="page-actions">
-                    <a-space wrap class="aws-inline-controls">
+                <ListToolbar title="账单概览" subtitle="查询最近 12 个完整月和当月费用。" :show-search="false">
+                    <template #actions>
                         <div class="toolbar-control"><account-select v-model="accountId" /></div>
                         <a-button type="primary" :loading="loading" :disabled="!accountId" @click="query(true)">刷新账单</a-button>
-                    </a-space>
-                </div>
-                </div>
+                    </template>
+                </ListToolbar>
                 <a-table row-key="month" :loading="loading" :columns="columns" :data-source="tableRows" :pagination="pagination" size="middle" :scroll="{ x: 760 }" :row-class-name="record => record.summary ? 'billing-summary-row' : ''" :locale="{ emptyText: '请选择账号后点击刷新按钮查询账单。' }">
                     <template #bodyCell="{ column, record }">
                         <template v-if="record.summary && column.key === 'month'">{{ record.months }} 个月</template>
@@ -27,6 +21,7 @@
 </template>
 
 <script>
+import ListToolbar from '../../shared/components/ListToolbar.vue'
 import AccountSelect from '../../shared/components/AccountSelect.vue';
 import { billingApi } from './api.js';
 import { errorMessage } from '../../shared/utils/errors.js';
@@ -36,7 +31,7 @@ import { apiList, apiObject } from '../../shared/utils/api-data.js';
 
 export default {
     name: 'BillingView',
-    components: { AccountSelect },
+    components: { AccountSelect, ListToolbar },
     data() {
         return {
             loading: false,

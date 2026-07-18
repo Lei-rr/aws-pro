@@ -1,19 +1,13 @@
 <template>
 
         <section>
-            <div class="page-toolbar">
-                <div>
-                    <a-typography-title :level="3" style="margin-bottom: 4px">vCPU 配额</a-typography-title>
-                    <a-typography-text type="secondary">按账号和区域查询 Lightsail 相关服务配额。</a-typography-text>
-                </div>
-                <div class="page-actions">
-                    <a-space wrap class="aws-inline-controls">
-                        <div class="toolbar-control"><account-select v-model="accountId" /></div>
-                        <div class="toolbar-control"><region-select v-model="region" @loaded="regions = $event" /></div>
-                        <a-button type="primary" :loading="loading" :disabled="!accountId || !region" @click="query(true)">刷新配额</a-button>
-                    </a-space>
-                </div>
-            </div>
+            <ListToolbar title="vCPU 配额" subtitle="按账号和区域查询 Lightsail 相关服务配额。" :show-search="false">
+                <template #actions>
+                    <div class="toolbar-control"><account-select v-model="accountId" /></div>
+                    <div class="toolbar-control"><region-select v-model="region" @loaded="regions = $event" /></div>
+                    <a-button type="primary" :loading="loading" :disabled="!accountId || !region" @click="query(true)">刷新配额</a-button>
+                </template>
+            </ListToolbar>
             <a-table :row-key="rowKey" :loading="loading" :columns="columns" :data-source="items" :pagination="pagination" size="middle" :scroll="{ x: 760 }" :locale="{ emptyText: '请选择账号和区域后点击刷新按钮查询 vCPU 配额。' }">
                 <template #bodyCell="{ column, record }">
                     <template v-if="column.key === 'region'">{{ regionLabel(record.region) }}</template>
@@ -25,6 +19,7 @@
 </template>
 
 <script>
+import ListToolbar from '../../shared/components/ListToolbar.vue'
 import AccountSelect from '../../shared/components/AccountSelect.vue';
 import RegionSelect from '../../shared/components/RegionSelect.vue';
 import { quotaApi } from './api.js';
@@ -36,7 +31,7 @@ import { apiList, apiObject } from '../../shared/utils/api-data.js';
 
 export default {
     name: 'QuotaView',
-    components: { AccountSelect, RegionSelect },
+    components: { AccountSelect, RegionSelect, ListToolbar },
     data() {
         return {
             loading: false,

@@ -1,12 +1,7 @@
 <template>
 
         <section class="operation-toolbar">
-            <div class="page-toolbar operation-titlebar">
-                <div>
-                    <a-typography-title :level="3" style="margin-bottom: 4px">实例运营台</a-typography-title>
-                    <a-typography-text type="secondary">选择账号和区域后同步、创建或复制实例 IP。</a-typography-text>
-                </div>
-            </div>
+            <ListToolbar title="实例运营台" subtitle="选择账号和区域后同步、创建或复制实例 IP。" :show-search="false" />
             <div class="operation-controls">
                 <div class="toolbar-control"><account-select :model-value="accountId" @update:model-value="$emit('update:accountId', $event)" /></div>
                 <div class="toolbar-control"><region-select :model-value="region" @update:model-value="$emit('update:region', $event)" @loaded="$emit('regions-loaded', $event)" /></div>
@@ -19,12 +14,13 @@
 </template>
 
 <script>
+import ListToolbar from '../../../shared/components/ListToolbar.vue'
 import AccountSelect from '../../../shared/components/AccountSelect.vue';
 import RegionSelect from '../../../shared/components/RegionSelect.vue';
 
 export default {
     name: 'InstanceToolbar',
-    components: { AccountSelect, RegionSelect },
+    components: { AccountSelect, RegionSelect, ListToolbar },
     props: {
         accountId: { type: String, default: '' },
         region: { type: String, default: '' },
