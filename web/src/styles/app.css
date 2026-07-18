@@ -29,10 +29,12 @@ body {
     gap: 16px;
 }
 
+/* overridden by shared shell for sticky auto height */
 .ant-layout-header {
-    height: 64px;
-    line-height: 64px;
+    height: auto;
+    line-height: normal;
     padding: 0;
+    background: #fff !important;
 }
 
 .app-brand-nav {
@@ -529,13 +531,22 @@ body {
 /* === Shared responsive shell (aligned with dns-pro; keeps AWS business styles above) === */
 body {
     overflow-x: hidden;
+    max-width: 100%;
 }
 
+html {
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+.ant-layout-header.app-header,
+.app-header.ant-layout-header,
 .app-header {
     position: sticky;
     top: 0;
     z-index: 10;
-    background: #fff;
+    background: #fff !important;
+    color: rgba(0, 0, 0, 0.88) !important;
     padding: 0 !important;
     line-height: normal !important;
     height: auto !important;
@@ -543,8 +554,12 @@ body {
 }
 
 .app-header-inner {
+    display: flex;
+    align-items: center;
+    gap: 16px;
     height: auto;
     min-height: 64px;
+    max-width: 100%;
 }
 
 .app-header-top {
@@ -555,9 +570,55 @@ body {
     flex: 0 0 auto;
 }
 
+.app-brand {
+    color: rgba(0, 0, 0, 0.88);
+}
+
+.app-brand .ant-typography {
+    color: rgba(0, 0, 0, 0.88) !important;
+}
+
+.app-menu.ant-menu,
+.app-menu {
+    flex: 1;
+    min-width: 0 !important;
+    background: transparent !important;
+    color: rgba(0, 0, 0, 0.88) !important;
+    border-bottom: 0 !important;
+}
+
+.app-menu.ant-menu-horizontal > .ant-menu-item,
+.app-menu.ant-menu-horizontal > .ant-menu-submenu,
+.app-menu.ant-menu-horizontal > .ant-menu-overflow-item {
+    display: inline-flex !important;
+    align-items: center;
+    white-space: nowrap !important;
+    writing-mode: horizontal-tb !important;
+    color: rgba(0, 0, 0, 0.88) !important;
+    background: transparent !important;
+}
+
+.app-menu.ant-menu-horizontal > .ant-menu-item-selected {
+    color: #1677ff !important;
+    background: transparent !important;
+}
+
+.app-menu .ant-menu-title-content,
+.app-menu .ant-menu-title-content a {
+    white-space: nowrap !important;
+    color: inherit !important;
+}
+
 .page-toolbar-title {
     min-width: 0;
     flex: 1 1 auto;
+    max-width: 100%;
+}
+
+.page-toolbar-title .ant-typography {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .page-actions {
@@ -565,10 +626,12 @@ body {
     align-items: center;
     justify-content: flex-end;
     flex: 0 1 auto;
+    max-width: 100%;
 }
 
 .page-actions .page-search {
     width: min(280px, 100%);
+    max-width: 100%;
 }
 
 .batch-toolbar-count {
@@ -577,11 +640,27 @@ body {
     color: rgba(0, 0, 0, 0.65);
 }
 
+.ant-table-wrapper,
+.ant-table {
+    max-width: 100%;
+}
+
+.ant-table-cell {
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    vertical-align: middle;
+}
+
+.ant-table-cell .ant-space {
+    max-width: 100%;
+    flex-wrap: wrap;
+}
+
 @media (max-width: 768px) {
     :root {
-        --table-copy-width: 180px;
-        --table-compact-copy-width: 180px;
-        --table-remark-width: 100px;
+        --table-copy-width: 140px;
+        --table-compact-copy-width: 120px;
+        --table-remark-width: 88px;
     }
 
     .app-container {
@@ -593,6 +672,8 @@ body {
 
     .app-main {
         padding: 16px 0 calc(32px + env(safe-area-inset-bottom, 0px));
+        max-width: 100%;
+        overflow-x: clip;
     }
 
     .ant-message {
@@ -612,7 +693,7 @@ body {
         align-items: stretch;
         gap: 0;
         min-height: 0;
-        padding: 8px 12px 0;
+        padding: 8px 0 0;
     }
 
     .app-header-top {
@@ -629,15 +710,19 @@ body {
         margin-bottom: 0;
     }
 
+    .app-menu.ant-menu,
     .app-menu {
         width: 100%;
-        min-width: 0;
-        height: 44px;
-        line-height: 44px;
+        min-width: 0 !important;
+        height: 44px !important;
+        line-height: 44px !important;
         overflow-x: auto;
         overflow-y: hidden;
         -webkit-overflow-scrolling: touch;
         scrollbar-width: none;
+        background: #fff !important;
+        color: rgba(0, 0, 0, 0.88) !important;
+        flex-wrap: nowrap !important;
     }
 
     .app-menu::-webkit-scrollbar {
@@ -645,10 +730,30 @@ body {
     }
 
     .app-menu.ant-menu-horizontal > .ant-menu-item,
-    .app-menu.ant-menu-horizontal > .ant-menu-submenu {
-        line-height: 42px;
-        padding-inline: 12px;
-        flex: 0 0 auto;
+    .app-menu.ant-menu-horizontal > .ant-menu-submenu,
+    .app-menu.ant-menu-horizontal > .ant-menu-overflow-item {
+        height: 44px !important;
+        line-height: 44px !important;
+        padding-inline: 12px !important;
+        margin: 0 !important;
+        flex: 0 0 auto !important;
+        width: auto !important;
+        max-width: none !important;
+        white-space: nowrap !important;
+        writing-mode: horizontal-tb !important;
+        color: rgba(0, 0, 0, 0.88) !important;
+        background: transparent !important;
+    }
+
+    .app-menu.ant-menu-horizontal > .ant-menu-item-selected {
+        color: #1677ff !important;
+        background: transparent !important;
+    }
+
+    .app-menu .ant-menu-title-content {
+        display: inline-block;
+        white-space: nowrap !important;
+        writing-mode: horizontal-tb !important;
     }
 
     .page-toolbar {
@@ -657,6 +762,7 @@ body {
         align-items: stretch;
         gap: 12px;
         margin-bottom: 16px;
+        max-width: 100%;
     }
 
     .page-actions {
@@ -707,15 +813,39 @@ body {
         font-size: 13px;
     }
 
+    .ant-table-wrapper {
+        width: 100%;
+        max-width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
     .ant-table-thead > tr > th,
-    .ant-table-tbody > tr > td {
+    .ant-table-tbody > tr > td,
+    .ant-table-cell {
         padding-inline: 8px !important;
+        white-space: normal !important;
+        word-break: break-word !important;
+        overflow-wrap: anywhere !important;
+        line-height: 1.4;
+        vertical-align: middle;
+    }
+
+    .ant-table-cell .ant-typography {
+        white-space: normal !important;
+        max-width: 100%;
+    }
+
+    .ant-table-cell .ant-tag {
+        margin-inline-end: 4px;
+        max-width: 100%;
     }
 
     .ant-table-pagination.ant-pagination {
         flex-wrap: wrap;
         row-gap: 8px;
         justify-content: center;
+        max-width: 100%;
     }
 
     .ant-table-pagination .ant-pagination-options {
@@ -758,6 +888,7 @@ body {
         border-radius: 14px;
         background: rgba(255, 255, 255, 0.96);
         box-shadow: 0 8px 28px rgba(15, 23, 42, 0.14);
+        box-sizing: border-box;
     }
 
     .batch-toolbar-count {
@@ -778,7 +909,11 @@ body {
     }
 
     .table-actions {
-        max-width: 160px;
+        max-width: 100%;
+    }
+
+    .table-actions .ant-btn {
+        padding-inline: 4px;
     }
 
     .dashboard-stat-grid .ant-col {
@@ -789,10 +924,11 @@ body {
         min-height: 320px;
         max-height: 55vh;
         font-size: 12px;
+        overflow: auto;
+        max-width: 100%;
     }
 
     .ant-result {
         padding: 24px 8px;
     }
 }
-
