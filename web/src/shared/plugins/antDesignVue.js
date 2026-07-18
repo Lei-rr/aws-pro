@@ -1,10 +1,20 @@
-import Antd from 'ant-design-vue'
+import Antd, { message, Modal, notification } from 'ant-design-vue'
 import 'ant-design-vue/dist/reset.css'
 
-export const antDesignVue = Antd
-export const message = Antd.message
-export const modal = Antd.Modal
+message.config({
+  top: '80px',
+  duration: 3,
+  maxCount: 5,
+})
+
+notification.config({
+  top: '80px',
+  duration: 3,
+})
 
 export function installAntDesignVue(app) {
   app.use(Antd)
 }
+
+export { message, Modal as modal, notification }
+export const antDesignVue = Antd
