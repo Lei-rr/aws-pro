@@ -586,14 +586,24 @@ export class NewbieTaskRunner {
   }
 
   private async resolveAwsAccountId(account: AwsAccount): Promise<string> {
-    const result = await withAwsRetry('get newbie caller identity', () =>
-      this.clients.sts(account).send(new GetCallerIdentityCommand({})),
-    )
-    const id = String(result?.Account ?? '').trim()
-    if (!/^\d{12}$/.test(id)) {
-      throw new Error(`Unable to resolve AWS AccountId from STS (got: ${id || 'empty'})`)
+    try {
+      const result = await withAwsRetry('get newbie caller identity', () =>
+        this.clients.sts(account).send(new GetCallerIdentityCommand({})),
+      )
+      const id = String(result?.Account ?? '').trim()
+      if (!/^\d{12}$/.test(id)) {
+        throw new Error(`Unable to resolve AWS AccountId from STS (got: ${id || 'empty'})`)
+      }
+      return id
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
+      if (/security token.*invalid|InvalidClientTokenId|UnrecognizedClientException|ExpiredToken|invalid.*access.?key/i.test(msg)) {
+        throw new Error(
+          `AWS 账号密钥无效或已失效（本地账号：${account.id}）。请到「账号管理」重新填写 Access Key / Secret Key 后再试。原始错误：${msg}`,
+        )
+      }
+      throw error instanceof Error ? error : new Error(msg)
     }
-    return id
   }
 
   private operationId(operationIds: Record<string, string>, step: string) {

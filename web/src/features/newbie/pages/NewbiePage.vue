@@ -3,13 +3,6 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { PageHeader } from '@/shared/ui/page-header'
 import { Button } from '@/shared/ui/button'
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/shared/ui/card'
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -60,6 +53,19 @@ const statusText = computed(() => {
   return labels[task.value?.status || 'idle'] || task.value?.status || '未开始'
 })
 
+/** 进度条/状态条：失败后仍展示结果，不只在 running 时出现 */
+const progressRunning = computed(() => running.value)
+const progressText = computed(() => {
+  if (running.value) return statusText.value
+  if (task.value?.status === 'failed') {
+    return humanizeAwsCredentialError(task.value?.message) || task.value?.message || '执行失败'
+  }
+  if (task.value?.status === 'completed') return '已完成'
+  if (task.value?.status === 'cancelled') return '已终止'
+  return ''
+})
+const progressStatus = computed(() => String(task.value?.status || ''))
+
 function appendLog(line: string) {
   const text = String(line || '')
   if (!text) return
@@ -88,20 +94,6 @@ function stopWatching() {
   stopPolling()
 }
 
-function syncTerminalState(line: string) {
-  if (line.includes('执行完毕')) {
-    task.value = { ...task.value, status: 'completed' }
-    running.value = false
-  } else if (line.includes('任务失败')) {
-    task.value = { ...task.value, status: 'failed' }
-    running.value = false
-  } else if (line.includes('任务已终止')) {
-    task.value = { ...task.value, status: 'cancelled' }
-    running.value = false
-  }
-  if (!running.value) stopWatching()
-}
-
 async function pollTask(taskId: string) {
   try {
     const response = await newbieApi.getTask(taskId)
@@ -115,11 +107,13 @@ async function pollTask(taskId: string) {
     if (['completed', 'failed', 'cancelled'].includes(t.status)) {
       running.value = false
       stopWatching()
+      notifyTerminal(t.status, t.message || list[list.length - 1] || '')
     } else {
       running.value = true
     }
-  } catch {
-    /* keep trying */
+  } catch (e) {
+    // 任务已创建后轮询失败也要写进日志，避免「没反应」
+    appendLog(`拉取任务状态失败：${errorMessage(e, '网络错误')}`)
   }
 }
 
@@ -142,6 +136,59 @@ function watchTask(taskId: string) {
   void pollTask(taskId)
 }
 
+let terminalNotified = false
+function notifyTerminal(status: string, message: string) {
+  if (terminalNotified) return
+  terminalNotified = true
+  const msg = humanizeAwsCredentialError(message) || message
+  if (status === 'failed') {
+    toast.error(msg || '新手任务执行失败')
+  } else if (status === 'cancelled') {
+    toast.warning(msg || '新手任务已终止')
+  } else if (status === 'completed') {
+    toast.success(msg || '新手任务已完成')
+  }
+}
+
+/** AWS 密钥/会话失效类错误 → 中文提示 */
+function humanizeAwsCredentialError(raw: unknown): string {
+  const text = String(raw || '')
+  if (!text) return ''
+  if (
+    /security token.*invalid|invalid.*security token|InvalidClientTokenId|UnrecognizedClientException|ExpiredToken|invalid.*access.?key|The security token included in the request is invalid/i.test(
+      text,
+    )
+  ) {
+    return 'AWS 账号密钥无效或已失效，请到「账号管理」重新填写 Access Key / Secret Key 后再试'
+  }
+  if (/could not load credentials|Missing credentials|credentials/i.test(text) && /invalid|missing|not found/i.test(text)) {
+    return 'AWS 账号凭证缺失或无效，请到「账号管理」检查密钥'
+  }
+  if (/任务失败：/.test(text)) {
+    const rest = text.replace(/^.*任务失败：/, '')
+    const better = humanizeAwsCredentialError(rest)
+    return better || text
+  }
+  return ''
+}
+
+function syncTerminalState(line: string) {
+  if (line.includes('执行完毕')) {
+    task.value = { ...task.value, status: 'completed' }
+    running.value = false
+    notifyTerminal('completed', line)
+  } else if (line.includes('任务失败')) {
+    task.value = { ...task.value, status: 'failed' }
+    running.value = false
+    notifyTerminal('failed', line)
+  } else if (line.includes('任务已终止')) {
+    task.value = { ...task.value, status: 'cancelled' }
+    running.value = false
+    notifyTerminal('cancelled', line)
+  }
+  if (!running.value) stopWatching()
+}
+
 async function restoreActiveTask() {
   try {
     const response = await newbieApi.getActiveTask()
@@ -154,7 +201,11 @@ async function restoreActiveTask() {
     logCursor = Array.isArray(t.logs) ? t.logs.length : 0
     if (['pending', 'running', 'cancelling'].includes(t.status)) {
       running.value = true
+      terminalNotified = false
       watchTask(t.id)
+    } else if (t.status === 'failed') {
+      // 打开页面时已有失败任务：直接展示日志 + 提示一次
+      notifyTerminal('failed', t.message || (t.logs || []).slice(-1)[0] || '')
     }
   } catch {
     /* ignore */
@@ -163,17 +214,35 @@ async function restoreActiveTask() {
 
 async function startTask() {
   loading.value = true
+  terminalNotified = false
   logs.value = [`正在创建后台任务（账号: ${accountId.value}，范围: ${selectedStepLabel.value}）...`]
   stopWatching()
   logCursor = 0
+  task.value = null
   try {
     const response = await newbieApi.createTask({ account_id: accountId.value, step: step.value })
-    task.value = apiObject(response)
+    const created = apiObject(response) as any
+    task.value = created
+    // 立即用服务端初始日志覆盖，避免只有「正在创建」
+    if (Array.isArray(created.logs) && created.logs.length) {
+      logs.value = [...created.logs]
+      logCursor = created.logs.length
+    } else {
+      appendLog('任务已创建，等待后台执行...')
+      logCursor = logs.value.length
+    }
+    if (!created?.id) {
+      toast.error('创建成功但未返回任务 ID')
+      appendLog('创建成功但未返回任务 ID，无法拉取日志')
+      running.value = false
+      return
+    }
     running.value = true
-    watchTask(String(task.value.id))
+    watchTask(String(created.id))
   } catch (e) {
-    toast.error(errorMessage(e, '创建新手任务失败'))
-    logs.value.push(`创建任务失败：${(e as Error).message || e}`)
+    const msg = errorMessage(e, '创建新手任务失败')
+    toast.error(msg)
+    appendLog(`创建任务失败：${msg}`)
     running.value = false
   } finally {
     loading.value = false
@@ -241,70 +310,73 @@ onBeforeUnmount(() => stopWatching())
       description="固定在 us-east-1 执行全部或单项任务。任务在后台运行，页面仅只读拉取日志（可关闭页面后回来继续看）。"
     />
 
-    <!-- 独立操作模块：账号 / 任务范围 / 执行控制 -->
-    <Card>
-      <CardHeader class="pb-3">
-        <CardTitle class="text-base">任务配置</CardTitle>
-        <CardDescription>选择账号与执行范围后开始；运行中可终止，日志可单独清空。</CardDescription>
-      </CardHeader>
-      <CardContent class="space-y-4">
-        <FieldGroup class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Field>
-            <FieldLabel>AWS 账号</FieldLabel>
-            <AccountSelect v-model="accountId" />
-          </Field>
-          <Field>
-            <FieldLabel>任务范围</FieldLabel>
-            <Select v-model="step" :disabled="running">
-              <SelectTrigger class="w-full">
-                <SelectValue placeholder="选择任务" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem v-for="item in stepOptions" :key="item.value" :value="item.value">
-                  {{ item.label }}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field class="sm:col-span-2 lg:col-span-1">
-            <FieldLabel class="opacity-0 max-lg:hidden">操作</FieldLabel>
-            <div class="flex flex-wrap items-center gap-2">
-              <Button size="sm" :loading="loading || running" :disabled="!canStart" @click="confirmStart">
-                开始执行
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                class="text-destructive"
-                :disabled="!running"
-                @click="confirmCancel"
-              >
-                终止任务
-              </Button>
-              <Button size="sm" variant="outline" :disabled="running" @click="clearLog">
-                清空日志
-              </Button>
-            </div>
-          </Field>
-        </FieldGroup>
-      </CardContent>
-    </Card>
+    <!-- 独立操作区：无边框模块 -->
+    <div class="space-y-3">
+      <div>
+        <h2 class="text-base font-semibold">任务配置</h2>
+        <p class="text-muted-foreground text-sm">
+          选择账号与执行范围后开始；运行中可终止，日志可单独清空。
+        </p>
+      </div>
+      <FieldGroup class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <Field>
+          <FieldLabel>AWS 账号</FieldLabel>
+          <AccountSelect v-model="accountId" />
+        </Field>
+        <Field>
+          <FieldLabel>任务范围</FieldLabel>
+          <Select v-model="step" :disabled="running">
+            <SelectTrigger class="w-full">
+              <SelectValue placeholder="选择任务" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem v-for="item in stepOptions" :key="item.value" :value="item.value">
+                {{ item.label }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field class="sm:col-span-2 lg:col-span-1">
+          <FieldLabel class="opacity-0 max-lg:hidden">操作</FieldLabel>
+          <div class="flex flex-wrap items-center gap-2">
+            <Button size="sm" :loading="loading || running" :disabled="!canStart" @click="confirmStart">
+              开始执行
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              class="text-destructive"
+              :disabled="!running"
+              @click="confirmCancel"
+            >
+              终止任务
+            </Button>
+            <Button size="sm" variant="outline" :disabled="running" @click="clearLog">
+              清空日志
+            </Button>
+          </div>
+        </Field>
+      </FieldGroup>
+    </div>
 
-    <JobProgressAlert :running="running" :text="running ? statusText : ''" title="新手任务" />
+    <JobProgressAlert
+      :running="progressRunning"
+      :text="progressText"
+      :status="progressStatus"
+      title="新手任务"
+    />
 
-    <Card>
-      <CardHeader class="pb-3">
-        <CardTitle class="text-base">实时日志</CardTitle>
-        <CardDescription>
+    <div class="space-y-2">
+      <div>
+        <h2 class="text-base font-semibold">实时日志</h2>
+        <p class="text-muted-foreground text-sm">
           状态：{{ statusText }}。日志来自后台任务落盘，SSE 断开不影响执行。
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <pre
-          ref="logBox"
-          class="bg-muted/40 max-h-[28rem] overflow-auto rounded-lg p-3 font-mono text-xs leading-5 whitespace-pre-wrap"
-        >{{ logs.join('\n') }}</pre>
-      </CardContent>
-    </Card>
+        </p>
+      </div>
+      <pre
+        ref="logBox"
+        class="max-h-[28rem] overflow-auto rounded-lg bg-neutral-950 p-3 font-mono text-xs leading-5 whitespace-pre-wrap text-neutral-100"
+      >{{ logs.join('\n') }}</pre>
+    </div>
   </div>
 </template>

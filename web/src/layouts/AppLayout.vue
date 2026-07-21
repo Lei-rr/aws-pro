@@ -26,12 +26,21 @@ const navItems = [
   { path: '/regions', label: '区域' },
   { path: '/quota', label: '配额' },
   { path: '/billing', label: '账单' },
+  { path: '/accounts', label: '账号管理' },
 ]
 
 function isActivePath(href: string) {
   if (href === '/') return route.path === '/'
   return route.path === href || route.path.startsWith(`${href}/`)
 }
+
+/** 手机顶栏折叠按钮：显示当前模块名，而不是固定「控制台」 */
+const currentNavLabel = computed(() => {
+  const exact = navItems.find((item) => item.path !== '/' && isActivePath(item.path))
+  if (exact) return exact.label
+  if (route.path === '/' || route.path === '') return '控制台'
+  return '控制台'
+})
 
 async function logout() {
   await session.logout()
@@ -72,14 +81,24 @@ function toggleDark() {
         <div class="min-w-0 flex-1 lg:hidden">
           <DropdownMenu>
             <DropdownMenuTrigger as-child>
-              <Button variant="ghost" size="sm" class="h-9 gap-1 px-2 text-[15px]">
-                控制台
-                <ChevronDown class="size-4 opacity-60" />
+              <Button variant="ghost" size="sm" class="h-9 max-w-full gap-1 px-2 text-[15px]">
+                <span class="truncate">{{ currentNavLabel }}</span>
+                <ChevronDown class="size-4 shrink-0 opacity-60" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" class="w-52">
-              <DropdownMenuItem v-for="item in navItems" :key="item.path" as-child>
-                <RouterLink :to="item.path" class="w-full">{{ item.label }}</RouterLink>
+              <DropdownMenuItem
+                v-for="item in navItems.filter((i) => i.path !== '/accounts')"
+                :key="item.path"
+                as-child
+              >
+                <RouterLink
+                  :to="item.path"
+                  class="w-full"
+                  :class="cn(isActivePath(item.path) && 'bg-accent text-accent-foreground')"
+                >
+                  {{ item.label }}
+                </RouterLink>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
