@@ -1,20 +1,24 @@
-<template>
+<script setup lang="ts">
+import { Copy } from '@lucide/vue'
+import { Button } from '@/shared/ui/button'
+import { copyText } from '@/shared/lib/clipboard'
 
-    <a-button type="link" size="small" title="复制" class="copy-button" @click="copy">
-      <template #icon><span aria-hidden="true">⧉</span></template>
-    </a-button>
-  
-</template>
+const props = defineProps<{ value?: string | number | null }>()
 
-<script>
-import { copyText } from '../utils/clipboard.js'
-
-export default {
-  props: { value: [String, Number] },
-  methods: {
-    copy() {
-      copyText(this.value)
-    },
-  }
-  };
+async function onCopy() {
+  await copyText(props.value)
+}
 </script>
+
+<template>
+  <Button
+    type="button"
+    variant="ghost"
+    size="icon"
+    class="size-7 shrink-0"
+    title="复制"
+    @click.stop="onCopy"
+  >
+    <Copy class="size-3.5" />
+  </Button>
+</template>

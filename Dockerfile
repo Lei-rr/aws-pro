@@ -3,7 +3,7 @@ FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-COPY web/package.json web/package-lock.json ./web/
+COPY web/package.json ./web/
 
 RUN npm ci
 

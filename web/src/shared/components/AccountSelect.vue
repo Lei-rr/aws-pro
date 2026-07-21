@@ -1,63 +1,53 @@
-<template>
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select'
+import { loadAccounts, useAccountStore } from '@/features/accounts/stores/accounts'
+import { toast } from '@/shared/lib/toast'
+import { errorMessage } from '@/shared/lib/errors'
 
-        <a-select
-            style="width: 100%"
-            :value="modelValue"
-            :loading="loading"
-            :disabled="loading"
-            placeholder="选择账号"
-            @change="$emit('update:modelValue', $event)"
-        >
-            <a-select-option v-for="item in accounts" :key="item.id" :value="item.id">
-                {{ item.remark ? item.id + ' - ' + item.remark : item.id }}
-            </a-select-option>
-        </a-select>
-    
-</template>
+const props = defineProps<{ modelValue?: string }>()
+const emit = defineEmits<{ 'update:modelValue': [string]; loaded: [unknown[]] }>()
 
-<script>
-import { loadAccounts, useAccountStore } from '../stores/accounts.js';
-import { message } from '../plugins/antDesignVue.js';
-import { errorMessage } from '../utils/errors.js';
+const loading = ref(false)
+const accountStore = useAccountStore()
+const accounts = computed(() => accountStore.accounts || [])
 
-export default {
-    name: 'AccountSelect',
-    props: {
-        modelValue: { type: String, default: '' }
-    },
-    emits: ['update:modelValue', 'loaded'],
-    data() {
-        return {
-            loading: false
-        };
-    },
-    computed: {
-        accounts() {
-            return this.accountStore.accounts || [];
-        }
-    },
-    setup() {
-        return { accountStore: useAccountStore() };
-    },
-    async mounted() {
-        await this.load();
-    },
-    methods: {
-        async load() {
-            this.loading = true;
-            try {
-                await loadAccounts();
-                this.$emit('loaded', this.accounts);
-                if (!this.modelValue && this.accounts[0]) {
-                    this.$emit('update:modelValue', this.accounts[0].id);
-                }
-            } catch (e) {
-                this.$emit('loaded', this.accounts);
-                message.error(errorMessage(e, '加载账号失败'));
-            } finally {
-                this.loading = false;
-            }
-        }
+onMounted(async () => {
+  loading.value = true
+  try {
+    await loadAccounts()
+    emit('loaded', accounts.value)
+    if (!props.modelValue && accounts.value[0]) {
+      emit('update:modelValue', accounts.value[0].id)
     }
-    };
+  } catch (e) {
+    emit('loaded', accounts.value)
+    toast.error(errorMessage(e, '加载账号失败'))
+  } finally {
+    loading.value = false
+  }
+})
 </script>
+
+<template>
+  <Select
+    :model-value="modelValue || ''"
+    :disabled="loading"
+    @update:model-value="(v) => emit('update:modelValue', String(v || ''))"
+  >
+    <SelectTrigger class="w-full min-w-[10rem]">
+      <SelectValue placeholder="选择账号" />
+    </SelectTrigger>
+    <SelectContent>
+      <SelectItem v-for="item in accounts" :key="item.id" :value="item.id">
+        {{ item.remark ? `${item.id} - ${item.remark}` : item.id }}
+      </SelectItem>
+    </SelectContent>
+  </Select>
+</template>

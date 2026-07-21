@@ -1,28 +1,37 @@
-<template>
+<script setup lang="ts">
+import { AppDialog } from '@/shared/ui/dialog'
+import { Button } from '@/shared/ui/button'
+import { Field, FieldGroup, FieldLabel } from '@/shared/ui/field'
+import { Input } from '@/shared/ui/input'
 
-        <a-modal :open="visible" title="编辑实例备注" :footer="null" :width="520" @update:open="$emit('update:visible', $event)">
-            <a-form layout="vertical" @submit.prevent="$emit('save')">
-                <a-form-item label="实例"><a-input :value="form.name" disabled /></a-form-item>
-                <a-form-item label="备注">
-                    <a-textarea v-model:value="form.remark" :maxlength="200" show-count autofocus placeholder="输入便于识别的业务说明" />
-                </a-form-item>
-                <div class="modal-form-actions-main account-form-actions">
-                    <a-button @click="$emit('update:visible', false)">取消</a-button>
-                    <a-button type="primary" :loading="saving" @click="$emit('save')">保存</a-button>
-                </div>
-            </a-form>
-        </a-modal>
-    
-</template>
-
-<script>
-export default {
-    name: 'InstanceRemarkDialog',
-    props: {
-        visible: { type: Boolean, default: false },
-        saving: { type: Boolean, default: false },
-        form: { type: Object, required: true }
-    },
-    emits: ['update:visible', 'save']
-    };
+const open = defineModel<boolean>('open', { default: false })
+const props = defineProps<{
+  saving?: boolean
+  form: { name?: string; remark?: string }
+}>()
+const emit = defineEmits<{ save: [] }>()
 </script>
+
+<template>
+  <AppDialog v-model:open="open" title="编辑实例备注" description="输入便于识别的业务说明。">
+    <FieldGroup>
+      <Field>
+        <FieldLabel>实例</FieldLabel>
+        <Input :model-value="form.name || ''" disabled />
+      </Field>
+      <Field>
+        <FieldLabel>备注</FieldLabel>
+        <Input
+          :model-value="form.remark || ''"
+          maxlength="200"
+          placeholder="业务说明（最多 200 字）"
+          @update:model-value="(v) => (form.remark = String(v ?? ''))"
+        />
+      </Field>
+    </FieldGroup>
+    <template #footer>
+      <Button variant="outline" @click="open = false">取消</Button>
+      <Button :loading="!!saving" @click="emit('save')">保存</Button>
+    </template>
+  </AppDialog>
+</template>
