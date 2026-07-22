@@ -18,6 +18,7 @@ const router = useRouter()
 const route = useRoute()
 const session = useSessionStore()
 
+/** 顶栏业务入口：不含账号管理（仅右上角账户下拉） */
 const navItems = [
   { path: '/', label: '控制台' },
   { path: '/lightsail', label: 'Lightsail' },
@@ -26,7 +27,6 @@ const navItems = [
   { path: '/regions', label: '区域' },
   { path: '/quota', label: '配额' },
   { path: '/billing', label: '账单' },
-  { path: '/accounts', label: '账号管理' },
 ]
 
 function isActivePath(href: string) {
@@ -34,11 +34,11 @@ function isActivePath(href: string) {
   return route.path === href || route.path.startsWith(`${href}/`)
 }
 
-/** 手机顶栏折叠按钮：显示当前模块名，而不是固定「控制台」 */
+/** 手机顶栏折叠：显示当前模块名；账号管理页单独标名 */
 const currentNavLabel = computed(() => {
+  if (route.path === '/accounts' || route.path.startsWith('/accounts/')) return '账号管理'
   const exact = navItems.find((item) => item.path !== '/' && isActivePath(item.path))
   if (exact) return exact.label
-  if (route.path === '/' || route.path === '') return '控制台'
   return '控制台'
 })
 
@@ -87,11 +87,7 @@ function toggleDark() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" class="w-52">
-              <DropdownMenuItem
-                v-for="item in navItems.filter((i) => i.path !== '/accounts')"
-                :key="item.path"
-                as-child
-              >
+              <DropdownMenuItem v-for="item in navItems" :key="item.path" as-child>
                 <RouterLink
                   :to="item.path"
                   class="w-full"
@@ -108,17 +104,18 @@ function toggleDark() {
           <Button variant="ghost" size="icon" class="size-9" title="主题" @click="toggleDark">
             <Moon class="size-4" />
           </Button>
+
+          <!-- 右上角账户下拉：显示用户名 + 账号管理 + 退出（对齐 dns-pro） -->
           <DropdownMenu>
             <DropdownMenuTrigger as-child>
-              <Button variant="ghost" size="icon" class="size-9">
+              <Button variant="ghost" class="h-9 gap-1.5 px-3 text-[15px]">
                 <UserRound class="size-4" />
+                <span class="hidden max-w-[7rem] truncate sm:inline">{{ session.username || '账户' }}</span>
+                <ChevronDown class="size-4 opacity-60" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" class="w-48">
-              <DropdownMenuLabel class="font-normal">
-                <div class="text-sm font-medium">{{ session.username || '账号' }}</div>
-                <div class="text-muted-foreground text-xs">AWS-PRO</div>
-              </DropdownMenuLabel>
+              <DropdownMenuLabel class="truncate">{{ session.username || '账户' }}</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem as-child>
                 <RouterLink to="/accounts" class="w-full">账号管理</RouterLink>
