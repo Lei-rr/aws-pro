@@ -1,12 +1,13 @@
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { noContent, success } from '../../lib/http/api-response.js'
+import { bodyRecord, bodyString } from '../../lib/utils/request-parse.js'
 
-export async function sessionStore(request: FastifyRequest<{ Body: any }>, reply: FastifyReply) {
-  const body = (request.body ?? {}) as Record<string, any>
+export async function sessionStore(request: FastifyRequest, reply: FastifyReply) {
+  const body = bodyRecord(request)
   const session = await request.server.ctx.sessionService.login(
     request,
-    String(body.username ?? ''),
-    String(body.password ?? ''),
+    bodyString(body, 'username'),
+    bodyString(body, 'password'),
   )
   return reply.send(success(session))
 }

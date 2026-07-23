@@ -33,9 +33,19 @@ export function error(
   details: unknown = undefined
 ): ErrorResponseBody {
   const code = errorCode ?? 'error'
-  const translated = translateError(code)
+  const mapped = translateError(code, '')
+  // Prefer Chinese map; keep vendor detail for AWS failures when present
+  let message = mapped || messageOrCode || code
+  if (
+    (code === 'aws_request_failed' || code === 'aws_credentials_invalid') &&
+    messageOrCode &&
+    messageOrCode !== mapped &&
+    messageOrCode !== code
+  ) {
+    message = mapped ? `${mapped}：${messageOrCode}` : messageOrCode
+  }
   return {
-    message: translated ?? messageOrCode,
+    message,
     code,
     status: statusCode,
     details,

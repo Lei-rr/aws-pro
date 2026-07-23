@@ -11,6 +11,8 @@ const ERROR_MESSAGE_MAP: Record<string, string> = {
   rate_limited: '请求过于频繁，请稍后再试',
   service_unavailable: '服务暂时不可用，请稍后重试',
   health_check_failed: '健康检查失败',
+  field_required: '必填字段缺失',
+  instance_name_invalid: '实例名称无效',
 
   account_not_found: '账号不存在',
   account_exists: '账号已存在',
@@ -23,6 +25,7 @@ const ERROR_MESSAGE_MAP: Record<string, string> = {
   lightsail_instance_name_invalid: 'Lightsail 实例名称无效',
   lightsail_bundle_invalid: 'Lightsail 套餐无效',
   lightsail_zone_invalid: 'Lightsail 可用区无效',
+  lightsail_static_ip_unavailable: '仅 IPv6 的 Lightsail 实例无法绑定静态 IPv4',
 
   ec2_instance_not_found: 'EC2 实例不存在',
   ec2_action_invalid: 'EC2 操作无效',
@@ -42,8 +45,32 @@ const ERROR_MESSAGE_MAP: Record<string, string> = {
 
   aws_request_failed: 'AWS 请求失败',
   aws_invalid_response: 'AWS 返回数据无效',
+  aws_credentials_invalid: 'AWS 密钥无效或已失效，请到「账号管理」重新填写',
+  unauthorized: '未授权，请检查 Access Key / Secret Key',
+  forbidden: '权限不足，请检查 IAM 策略',
+  auth_failure: '认证失败，请检查密钥',
+  InvalidClientTokenId: 'Access Key 无效',
+  UnrecognizedClientException: '密钥无效或未识别',
+  ExpiredToken: '临时凭证已过期',
+  AuthFailure: '认证失败，请检查密钥',
+  UnauthorizedOperation: '无权限执行该操作，请检查 IAM 策略',
+  AccessDenied: '访问被拒绝，请检查 IAM 策略',
+  AccessDeniedException: '访问被拒绝，请检查 IAM 策略',
+  OptInRequired: '该区域未开通，请先在区域管理中启用',
+  RequestLimitExceeded: 'AWS 请求过于频繁，请稍后重试',
+  Throttling: 'AWS 请求过于频繁，请稍后重试',
+  ThrottlingException: 'AWS 请求过于频繁，请稍后重试',
+  ServiceUnavailable: 'AWS 服务暂时不可用，请稍后重试',
+  InternalError: 'AWS 内部错误，请稍后重试',
+  InvalidParameterValue: '参数无效',
+  InvalidParameter: '参数无效',
+  ResourceNotFoundException: '资源不存在',
+  InvalidInstanceID: '实例 ID 无效',
+  'InvalidInstanceID.NotFound': '实例不存在',
 }
 
 export function translateError(code: string, fallback?: string): string {
-  return ERROR_MESSAGE_MAP[code] || fallback || code
+  if (ERROR_MESSAGE_MAP[code]) return ERROR_MESSAGE_MAP[code]
+  if (fallback !== undefined && fallback !== '') return fallback
+  return code
 }

@@ -1,8 +1,9 @@
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { success } from '../../lib/http/api-response.js'
+import { bodyRecord } from '../../lib/utils/request-parse.js'
 
 export async function newbieStore(request: FastifyRequest, reply: FastifyReply) {
-  const body = (request.body ?? {}) as Record<string, unknown>
+  const body = bodyRecord(request)
   return reply.status(201).send(success(await request.server.ctx.newbieTaskService.create(body)))
 }
 
