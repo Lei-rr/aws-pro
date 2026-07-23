@@ -23,6 +23,7 @@ import type { AwsInstance } from '@/shared/types'
 const loading = ref(false)
 const syncing = ref(false)
 const actionLoadingKey = ref('')
+const actionLoadingLabel = ref('')
 const accountId = ref('')
 const region = ref('')
 const instances = ref<AwsInstance[]>([])
@@ -46,6 +47,10 @@ const busy = computed(() => loading.value || syncing.value || !!actionLoadingKey
 
 function rowKey(row: AwsInstance) {
   return `${row.account_id}:${row.region}:${row.id}`
+}
+
+function isRowActionBusy(row: AwsInstance) {
+  return actionLoadingKey.value.startsWith(`${row.id}:`)
 }
 
 async function loadInstances() {
@@ -140,7 +145,11 @@ async function runAction(row: AwsInstance, action: string) {
     toast.warning('已有 EC2 操作正在进行')
     return
   }
+  const name = ACTION_NAMES[action] || action
+  const target = String(row.name || row.id || '')
   actionLoadingKey.value = key
+  actionLoadingLabel.value = `${name}中`
+  toast.loading(`正在${name} ${target}…`)
   try {
     const response = await ec2Api.action({
       instance_id: row.id,
@@ -149,13 +158,16 @@ async function runAction(row: AwsInstance, action: string) {
       action,
       confirm: action,
     })
-    toast.success((apiObject(response) as { message?: string }).message || '命令已提交')
+    toast.dismiss()
+    toast.success((apiObject(response) as { message?: string }).message || `${name}已提交`)
     await syncScope(String(row.account_id), String(row.region))
     await loadInstances()
   } catch (e) {
-    toast.error(errorMessage(e, 'EC2 操作失败'))
+    toast.dismiss()
+    toast.error(errorMessage(e, `${name}失败`))
   } finally {
     actionLoadingKey.value = ''
+    actionLoadingLabel.value = ''
   }
 }
 
@@ -266,7 +278,12 @@ onMounted(async () => {
         <Ec2IpCell :row="record" />
       </template>
       <template #actions="{ record }">
-        <Ec2ActionSelect :row="record" @operate="operate" />
+        <Ec2ActionSelect
+          :row="record"
+          :busy="isRowActionBusy(record)"
+          :busy-label="isRowActionBusy(record) ? actionLoadingLabel : ''"
+          @operate="operate"
+        />
       </template>
     </CloudInstanceTable>
 

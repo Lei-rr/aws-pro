@@ -23,6 +23,7 @@ import type { AwsInstance } from '@/shared/types'
 const loading = ref(false)
 const syncing = ref(false)
 const actionLoadingKey = ref('')
+const actionLoadingLabel = ref('')
 const accountId = ref('')
 const region = ref('')
 const instances = ref<AwsInstance[]>([])
@@ -44,6 +45,10 @@ const busy = computed(() => loading.value || syncing.value || !!actionLoadingKey
 
 function rowKey(row: AwsInstance) {
   return `${row.account_id}:${row.region}:${row.name}`
+}
+
+function isRowActionBusy(row: AwsInstance) {
+  return actionLoadingKey.value.startsWith(`${row.account_id}:${row.region}:${row.name}:`)
 }
 
 function packageLabel(row: AwsInstance) {
@@ -156,7 +161,12 @@ async function runAction(row: AwsInstance, action: string) {
     toast.warning('已有实例操作正在进行')
     return
   }
+  const name = ACTION_NAMES[action] || action
+  const target = String(row.name || '')
   actionLoadingKey.value = key
+  actionLoadingLabel.value = `${name}中`
+  // 立刻反馈：toast + 行内 loading，避免等 AWS 返回像没点
+  toast.loading(`正在${name} ${target}…`)
   try {
     const response = await lightsailApi.action({
       action,
@@ -166,14 +176,17 @@ async function runAction(row: AwsInstance, action: string) {
       instance_name: row.name,
     })
     const result = apiObject(response) as { message?: string }
-    toast.success(result.message || '命令已提交')
+    toast.dismiss()
+    toast.success(result.message || `${name}已提交`)
     await syncScope(String(row.account_id), String(row.region))
     window.dispatchEvent(new CustomEvent('instances-updated'))
     await loadInstances()
   } catch (e) {
-    toast.error(errorMessage(e, '操作失败'))
+    toast.dismiss()
+    toast.error(errorMessage(e, `${name}失败`))
   } finally {
     actionLoadingKey.value = ''
+    actionLoadingLabel.value = ''
   }
 }
 
@@ -284,7 +297,12 @@ onMounted(async () => {
         <InstanceIpCell :row="record" />
       </template>
       <template #actions="{ record }">
-        <InstanceActionSelect :row="record" @operate="operate" />
+        <InstanceActionSelect
+          :row="record"
+          :busy="isRowActionBusy(record)"
+          :busy-label="isRowActionBusy(record) ? actionLoadingLabel : ''"
+          @operate="operate"
+        />
       </template>
     </CloudInstanceTable>
 

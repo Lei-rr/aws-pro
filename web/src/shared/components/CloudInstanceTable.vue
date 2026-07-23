@@ -162,7 +162,7 @@ function regionLabel(id?: string) {
             <TableHead>状态</TableHead>
             <TableHead class="hidden md:table-cell">静态 IP</TableHead>
             <TableHead class="hidden md:table-cell">备注</TableHead>
-            <TableHead class="rounded-r-lg w-16 text-right">操作</TableHead>
+            <TableHead class="rounded-r-lg w-[7rem] text-right">操作</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody class="**:data-[slot=table-cell]:py-2.5">
