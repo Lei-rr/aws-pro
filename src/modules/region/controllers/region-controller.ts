@@ -1,7 +1,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify'
-import { success } from '../../lib/http/api-response.js'
-import { parseCacheMode } from '../../lib/cache/aws-cache.js'
-import { bodyRecord, queryBool, queryRecord, queryString } from '../../lib/utils/request-parse.js'
+import { success } from '../../../lib/http/api-response.js'
+import { parseCacheMode } from '../../../lib/cache/aws-cache.js'
+import { bodyRecord, queryBool, queryRecord, queryString } from '../../../lib/utils/request-parse.js'
 
 export async function regionsIndex(request: FastifyRequest, reply: FastifyReply) {
   const q = queryRecord(request)

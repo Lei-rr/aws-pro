@@ -41,7 +41,7 @@ if grep -qi alpine /etc/os-release 2>/dev/null; then service sshd restart || tru
 }
 
 export class LightsailProvider {
-  constructor(private readonly clients = new AwsClientFactory()) {}
+  constructor(private readonly clients: AwsClientFactory) {}
 
   async availabilityZones(account: AwsAccount, region: string): Promise<string[]> {
     return awsCall('lightsail.availability_zones', async () => {

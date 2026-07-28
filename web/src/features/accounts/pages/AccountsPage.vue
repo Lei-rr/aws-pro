@@ -18,18 +18,29 @@ import { clearAccountsCache } from '@/features/accounts/stores/accounts'
 import { apiList, apiObject } from '@/shared/api/http'
 import { toast } from '@/shared/lib/toast'
 import { errorMessage } from '@/shared/lib/errors'
-import { withMinLoading } from '@/shared/lib/loading'
+import { useListPage } from '@/shared/lib/use-list-page'
 import { confirmDelete } from '@/shared/ui/confirm'
 import type { Account } from '@/shared/types'
 
-const loading = ref(false)
-const refreshing = ref(false)
 const saving = ref(false)
 const deletingId = ref('')
 const keyword = ref('')
 const accounts = ref<Account[]>([])
 const tableKey = ref(0)
 const dialogOpen = ref(false)
+
+const { loading, refreshing, runLoad, onRefresh, fail } = useListPage({
+  pageSizeScope: 'aws-accounts',
+  load: async () => {
+    try {
+      const response = await accountApi.list()
+      setAccounts(apiList<Account>(response))
+    } catch (e) {
+      setAccounts([])
+      fail(e)
+    }
+  },
+})
 const form = reactive({ original_id: '', id: '', access_key: '', secret_key: '', remark: '' })
 
 const filtered = computed(() => {
@@ -47,28 +58,6 @@ function setAccounts(list: Account[]) {
 
 function emptyForm() {
   return { original_id: '', id: '', access_key: '', secret_key: '', remark: '' }
-}
-
-async function load() {
-  await withMinLoading(loading, async () => {
-    try {
-      const response = await accountApi.list()
-      setAccounts(apiList<Account>(response))
-    } catch (e) {
-      setAccounts([])
-      toast.error(errorMessage(e, '加载服务商失败'))
-    }
-  })
-}
-
-async function onRefresh() {
-  refreshing.value = true
-  try {
-    await load()
-    toast.success('已刷新')
-  } finally {
-    refreshing.value = false
-  }
 }
 
 function openCreate() {
@@ -126,7 +115,7 @@ async function save() {
     dialogOpen.value = false
     clearAccountsCache()
     window.dispatchEvent(new CustomEvent('accounts-updated'))
-    await load()
+    await runLoad()
   } catch (e) {
     toast.error(errorMessage(e, '服务商保存失败'))
   } finally {
@@ -144,7 +133,7 @@ async function remove(row: Account) {
     toast.success('服务商已删除')
     clearAccountsCache()
     window.dispatchEvent(new CustomEvent('accounts-updated'))
-    await load()
+    await runLoad()
   } catch (e) {
     toast.error(errorMessage(e, '服务商删除失败'))
   } finally {
@@ -152,7 +141,7 @@ async function remove(row: Account) {
   }
 }
 
-onMounted(load)
+onMounted(() => runLoad())
 </script>
 
 <template>

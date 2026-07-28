@@ -9,7 +9,7 @@ function ymd(d: Date) {
 }
 
 export class BillingProvider {
-  constructor(private readonly clients = new AwsClientFactory()) {}
+  constructor(private readonly clients: AwsClientFactory) {}
 
   async yearlyCostAndCredits(account: AwsAccount) {
     return awsCall('billing.yearly', async () => {

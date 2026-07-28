@@ -7,7 +7,7 @@ import {
   lightsailRemark,
   lightsailStore,
   lightsailSync,
-} from './controller.js'
+} from './controllers/lightsail-controller.js'
 
 export async function routes(app: FastifyInstance) {
   app.get('/lightsail/instances', lightsailInstances)

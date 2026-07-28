@@ -4,7 +4,7 @@ import type { Ec2Instance } from '../../types/aws.js'
 type StoreShape = { items: Ec2Instance[] }
 
 export class Ec2InstanceRepository {
-  constructor(private readonly store = new JsonStore<StoreShape>('ec2-instances.json', { items: [] })) {}
+  constructor(private readonly store: JsonStore<StoreShape>) {}
 
   async all(): Promise<Ec2Instance[]> {
     const data = await this.store.read()

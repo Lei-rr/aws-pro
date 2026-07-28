@@ -45,7 +45,7 @@ function tagName(tags: any[] | undefined) {
 }
 
 export class Ec2Provider {
-  constructor(private readonly clients = new AwsClientFactory()) {}
+  constructor(private readonly clients: AwsClientFactory) {}
 
   async instances(account: AwsAccount, region: string): Promise<Ec2Instance[]> {
     return awsCall('ec2.instances', async () => {

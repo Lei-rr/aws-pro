@@ -13,9 +13,9 @@ import { SystemConfigRepository } from '../system/config-repository.js'
 
 export class RegionService {
   constructor(
-    private readonly accounts: AccountService = new AccountService(),
-    private readonly provider = new RegionProvider(),
-    private readonly config = new SystemConfigRepository(),
+    private readonly accounts: AccountService,
+    private readonly provider: RegionProvider,
+    private readonly config: SystemConfigRepository,
   ) {}
 
   async configuredRegions() {

@@ -28,9 +28,9 @@ const INSTANCE_TYPES: Record<string, string> = {
 
 export class Ec2Service {
   constructor(
-    private readonly accounts: AccountService = new AccountService(),
-    private readonly provider = new Ec2Provider(),
-    private readonly instances = new Ec2InstanceRepository(),
+    private readonly accounts: AccountService,
+    private readonly provider: Ec2Provider,
+    private readonly instances: Ec2InstanceRepository,
   ) {}
 
   options() {

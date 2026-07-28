@@ -1,6 +1,6 @@
 
 import type { FastifyInstance } from 'fastify'
-import { ec2Action, ec2Instances, ec2Options, ec2Remark, ec2Store, ec2Sync } from './controller.js'
+import { ec2Action, ec2Instances, ec2Options, ec2Remark, ec2Store, ec2Sync } from './controllers/ec2-controller.js'
 
 export async function routes(app: FastifyInstance) {
   app.get('/ec2/instances', ec2Instances)

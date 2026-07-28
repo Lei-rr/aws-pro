@@ -4,7 +4,7 @@ import type { LightsailInstance } from '../../types/aws.js'
 type StoreShape = { items: LightsailInstance[] }
 
 export class LightsailInstanceRepository {
-  constructor(private readonly store = new JsonStore<StoreShape>('lightsail-instances.json', { items: [] })) {}
+  constructor(private readonly store: JsonStore<StoreShape>) {}
 
   async all(): Promise<LightsailInstance[]> {
     const data = await this.store.read()

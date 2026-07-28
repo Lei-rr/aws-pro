@@ -8,9 +8,9 @@ import { Ec2InstanceRepository } from '../ec2/repository.js'
 
 export class AccountService {
   constructor(
-    private readonly accounts = new AccountRepository(),
-    private readonly lightsail = new LightsailInstanceRepository(),
-    private readonly ec2 = new Ec2InstanceRepository(),
+    private readonly accounts: AccountRepository,
+    private readonly lightsail: LightsailInstanceRepository,
+    private readonly ec2: Ec2InstanceRepository,
   ) {}
 
   async allPublic(): Promise<PublicAwsAccount[]> {

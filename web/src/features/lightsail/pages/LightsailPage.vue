@@ -15,12 +15,11 @@ import { apiList, apiObject } from '@/shared/api/http'
 import { toast } from '@/shared/lib/toast'
 import { errorMessage } from '@/shared/lib/errors'
 import { copyText } from '@/shared/lib/clipboard'
-import { withMinLoading } from '@/shared/lib/loading'
+import { useListPage } from '@/shared/lib/use-list-page'
 import { confirmDialog } from '@/shared/ui/confirm'
 import { regionName } from '@/shared/lib/format'
 import type { AwsInstance } from '@/shared/types'
 
-const loading = ref(false)
 const syncing = ref(false)
 const actionLoadingKey = ref('')
 const actionLoadingLabel = ref('')
@@ -28,6 +27,22 @@ const accountId = ref('')
 const region = ref('')
 const instances = ref<AwsInstance[]>([])
 const loadToken = ref(0)
+
+const { loading, refreshing, runLoad, onRefresh, fail } = useListPage({
+  pageSizeScope: 'aws-lightsail',
+  load: async () => {
+    const token = ++loadToken.value
+    try {
+      const response = await lightsailApi.instances()
+      if (token !== loadToken.value) return
+      instances.value = apiList<AwsInstance>(response, ['items'])
+    } catch (e) {
+      if (token !== loadToken.value) return
+      instances.value = []
+      fail(e)
+    }
+  },
+})
 const createOpen = ref(false)
 const remarkOpen = ref(false)
 const remarkSaving = ref(false)
@@ -61,21 +76,6 @@ function packageLabel(row: AwsInstance) {
   return parts.length ? `${row.bundle_id} · ${parts.join('/')}` : String(row.bundle_id)
 }
 
-async function loadInstances() {
-  const token = ++loadToken.value
-  await withMinLoading(loading, async () => {
-    try {
-      const response = await lightsailApi.instances()
-      if (token !== loadToken.value) return
-      instances.value = apiList<AwsInstance>(response, ['items'])
-    } catch (e) {
-      if (token !== loadToken.value) return
-      instances.value = []
-      toast.error(errorMessage(e, '加载实例失败'))
-    }
-  })
-}
-
 async function syncScope(aid: string, reg: string) {
   return lightsailApi.sync({ account_id: aid, region: reg })
 }
@@ -100,7 +100,7 @@ async function sync() {
       toast.warning(warning.message || '同步存在部分警告')
     }
     window.dispatchEvent(new CustomEvent('instances-updated'))
-    await loadInstances()
+    await runLoad()
   } catch (e) {
     toast.error(errorMessage(e, '同步失败'))
   } finally {
@@ -115,7 +115,7 @@ async function onCreated() {
   } catch (e) {
     toast.warning(errorMessage(e, '创建成功，但同步列表失败'))
   }
-  await loadInstances()
+  await runLoad()
 }
 
 const ACTION_NAMES: Record<string, string> = {
@@ -180,7 +180,7 @@ async function runAction(row: AwsInstance, action: string) {
     toast.success(result.message || `${name}已提交`)
     await syncScope(String(row.account_id), String(row.region))
     window.dispatchEvent(new CustomEvent('instances-updated'))
-    await loadInstances()
+    await runLoad()
   } catch (e) {
     toast.dismiss()
     toast.error(errorMessage(e, `${name}失败`))
@@ -258,7 +258,7 @@ onMounted(async () => {
   } catch (e) {
     toast.error(errorMessage(e, '加载配置失败'))
   }
-  await loadInstances()
+  await runLoad()
 })
 </script>
 

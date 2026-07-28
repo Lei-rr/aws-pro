@@ -11,16 +11,34 @@ import { quotaApi } from '@/features/quota/api/quota'
 import { apiList } from '@/shared/api/http'
 import { regionName } from '@/shared/lib/format'
 import { toast } from '@/shared/lib/toast'
-import { errorMessage } from '@/shared/lib/errors'
+import { useListPage } from '@/shared/lib/use-list-page'
 
 type QuotaRow = { name: string; account_id?: string; region?: string; value?: unknown; error?: boolean }
 
-const loading = ref(false)
 const accountId = ref('')
 const region = ref('')
 const regions = ref<Record<string, string>>({})
 const items = ref<QuotaRow[]>([])
 const loadToken = ref(0)
+
+const { loading, refreshing, runLoad, onRefresh, fail } = useListPage({
+  pageSizeScope: 'aws-quota',
+  load: async (options = {}) => {
+    if (!accountId.value || !region.value) return
+    const token = ++loadToken.value
+    try {
+      const response = await quotaApi.vcpu(
+        { account_id: accountId.value, region: region.value },
+        { refresh: options.refresh },
+      )
+      if (token !== loadToken.value) return
+      items.value = apiList<QuotaRow>(response, ['items'])
+    } catch (e) {
+      if (token !== loadToken.value) return
+      fail(e)
+    }
+  },
+})
 
 async function loadFromCache() {
   if (!accountId.value || !region.value) return
@@ -38,18 +56,7 @@ async function query() {
     toast.warning('请选择账号和区域')
     return
   }
-  const token = ++loadToken.value
-  loading.value = true
-  try {
-    const response = await quotaApi.vcpu({ account_id: accountId.value, region: region.value }, { refresh: true })
-    if (token !== loadToken.value) return
-    items.value = apiList<QuotaRow>(response, ['items'])
-  } catch (e) {
-    if (token !== loadToken.value) return
-    toast.error(errorMessage(e, '查询失败'))
-  } finally {
-    if (token === loadToken.value) loading.value = false
-  }
+  await onRefresh()
 }
 
 watch([accountId, region], () => {
@@ -67,8 +74,8 @@ onMounted(() => {
     <PageHeader title="vCPU 配额" description="按账号和区域查询 Lightsail 相关服务配额。">
       <div class="w-44"><AccountSelect v-model="accountId" /></div>
       <div class="w-44"><RegionSelect v-model="region" @loaded="(r) => (regions = r)" /></div>
-      <Button size="sm" :disabled="!accountId || !region || loading" @click="query">
-        <RefreshCw class="size-4" :class="loading && 'animate-spin'" />
+      <Button size="sm" :disabled="!accountId || !region || loading || refreshing" @click="query">
+        <RefreshCw class="size-4" :class="refreshing && 'animate-spin'" />
         刷新配额
       </Button>
     </PageHeader>

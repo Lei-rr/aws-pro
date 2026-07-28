@@ -15,12 +15,11 @@ import { apiList, apiObject } from '@/shared/api/http'
 import { toast } from '@/shared/lib/toast'
 import { errorMessage } from '@/shared/lib/errors'
 import { copyText } from '@/shared/lib/clipboard'
-import { withMinLoading } from '@/shared/lib/loading'
+import { useListPage } from '@/shared/lib/use-list-page'
 import { confirmDialog } from '@/shared/ui/confirm'
 import { regionName } from '@/shared/lib/format'
 import type { AwsInstance } from '@/shared/types'
 
-const loading = ref(false)
 const syncing = ref(false)
 const actionLoadingKey = ref('')
 const actionLoadingLabel = ref('')
@@ -28,6 +27,22 @@ const accountId = ref('')
 const region = ref('')
 const instances = ref<AwsInstance[]>([])
 const loadToken = ref(0)
+
+const { loading, refreshing, runLoad, onRefresh, fail } = useListPage({
+  pageSizeScope: 'aws-ec2',
+  load: async () => {
+    const token = ++loadToken.value
+    try {
+      const response = await ec2Api.instances()
+      if (token !== loadToken.value) return
+      instances.value = apiList<AwsInstance>(response, ['items'])
+    } catch (e) {
+      if (token !== loadToken.value) return
+      instances.value = []
+      fail(e)
+    }
+  },
+})
 const createOpen = ref(false)
 const remarkOpen = ref(false)
 const remarkSaving = ref(false)
@@ -53,21 +68,6 @@ function isRowActionBusy(row: AwsInstance) {
   return actionLoadingKey.value.startsWith(`${row.id}:`)
 }
 
-async function loadInstances() {
-  const token = ++loadToken.value
-  await withMinLoading(loading, async () => {
-    try {
-      const response = await ec2Api.instances()
-      if (token !== loadToken.value) return
-      instances.value = apiList<AwsInstance>(response, ['items'])
-    } catch (e) {
-      if (token !== loadToken.value) return
-      instances.value = []
-      toast.error(errorMessage(e, '加载 EC2 实例失败'))
-    }
-  })
-}
-
 async function syncScope(aid: string, reg: string) {
   return ec2Api.sync({ account_id: aid, region: reg })
 }
@@ -85,7 +85,7 @@ async function sync() {
   try {
     const result = apiObject(await syncScope(accountId.value, region.value)) as { count?: number }
     toast.success(`同步完成，共 ${result.count ?? 0} 台 EC2`)
-    await loadInstances()
+    await runLoad()
   } catch (e) {
     toast.error(errorMessage(e, '同步 EC2 失败'))
   } finally {
@@ -99,7 +99,7 @@ async function onCreated() {
   } catch (e) {
     toast.warning(errorMessage(e, '创建成功，但同步列表失败'))
   }
-  await loadInstances()
+  await runLoad()
 }
 
 const ACTION_NAMES: Record<string, string> = {
@@ -161,7 +161,7 @@ async function runAction(row: AwsInstance, action: string) {
     toast.dismiss()
     toast.success((apiObject(response) as { message?: string }).message || `${name}已提交`)
     await syncScope(String(row.account_id), String(row.region))
-    await loadInstances()
+    await runLoad()
   } catch (e) {
     toast.dismiss()
     toast.error(errorMessage(e, `${name}失败`))
@@ -240,7 +240,7 @@ onMounted(async () => {
   } catch (e) {
     toast.error(errorMessage(e, '加载 EC2 配置失败'))
   }
-  await loadInstances()
+  await runLoad()
 })
 </script>
 

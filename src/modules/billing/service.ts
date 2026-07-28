@@ -12,8 +12,8 @@ type BillingCacheValue = {
 
 export class BillingService {
   constructor(
-    private readonly accounts: AccountService = new AccountService(),
-    private readonly billing = new BillingProvider(),
+    private readonly accounts: AccountService,
+    private readonly billing: BillingProvider,
   ) {}
 
   async yearlySummary(body: Record<string, unknown>, mode: CacheReadMode = {}) {

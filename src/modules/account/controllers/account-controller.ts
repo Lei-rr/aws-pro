@@ -1,6 +1,6 @@
 import type { FastifyReply, FastifyRequest } from 'fastify'
-import { success, noContent } from '../../lib/http/api-response.js'
-import { bodyRecord } from '../../lib/utils/request-parse.js'
+import { success, noContent } from '../../../lib/http/api-response.js'
+import { bodyRecord } from '../../../lib/utils/request-parse.js'
 
 export async function accountIndex(request: FastifyRequest, reply: FastifyReply) {
   return reply.send(success(await request.server.ctx.accountService.allPublic()))

@@ -9,7 +9,7 @@ const CODES: Record<string, string> = {
 }
 
 export class QuotaProvider {
-  constructor(private readonly clients = new AwsClientFactory()) {}
+  constructor(private readonly clients: AwsClientFactory) {}
 
   async vcpuQuota(account: AwsAccount, region: string) {
     const client = this.clients.serviceQuotas(account, region)

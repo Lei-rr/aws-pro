@@ -15,8 +15,7 @@ import './types/fastify.d.ts'
  * plugins/*  = Fastify plugins (cookie/helmet/static/session/ctx)
  * modules/*  = business features (routes + services)
  * platform/* = data dirs (+ future job/events if needed)
- *
- * See docs/FOUNDATION.md
+ * Composition root = app-context.ts (sole wiring)
  */
 export async function buildApp(config: AppConfig) {
   const DEFAULT_SESSION_SECRET = 'aws-pro-secure-session'

@@ -1,4 +1,5 @@
 import http from '@/shared/api/http'
+import { encodePath } from '@/shared/lib/path'
 
 export const lightsailApi = {
   instances(params: Record<string, unknown> = {}) {
@@ -14,9 +15,9 @@ export const lightsailApi = {
     return http.post('/lightsail/instances', data)
   },
   updateRemark(data: Record<string, unknown>) {
-    return http.put(`/lightsail/instances/${encodeURIComponent(String(data.instance_name))}/remark`, data)
+    return http.put(`/lightsail/instances/${encodePath(String(data.instance_name))}/remark`, data)
   },
   action(data: Record<string, unknown>) {
-    return http.post(`/lightsail/instances/${encodeURIComponent(String(data.instance_name))}/actions`, data)
+    return http.post(`/lightsail/instances/${encodePath(String(data.instance_name))}/actions`, data)
   },
 }

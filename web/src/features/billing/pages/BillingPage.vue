@@ -8,7 +8,7 @@ import AccountSelect from '@/shared/components/AccountSelect.vue'
 import { billingApi } from '@/features/billing/api/billing'
 import { apiObject } from '@/shared/api/http'
 import { toast } from '@/shared/lib/toast'
-import { errorMessage } from '@/shared/lib/errors'
+import { useListPage } from '@/shared/lib/use-list-page'
 
 type BillRow = {
   month: string
@@ -20,11 +20,38 @@ type BillRow = {
   months?: number
 }
 
-const loading = ref(false)
 const accountId = ref('')
 const bills = ref<BillRow[]>([])
 const summary = ref({ total_cost: 0, total_credit: 0 })
 const loadToken = ref(0)
+
+const { loading, refreshing, runLoad, onRefresh, fail } = useListPage({
+  pageSizeScope: 'aws-billing',
+  load: async (options = {}) => {
+    if (!accountId.value) return
+    const token = ++loadToken.value
+    try {
+      const response = await billingApi.yearly(
+        { account_id: accountId.value },
+        { refresh: options.refresh },
+      )
+      if (token !== loadToken.value) return
+      const billing = apiObject(response) as {
+        items?: BillRow[]
+        total_cost?: number
+        total_credit?: number
+      }
+      bills.value = billing.items || []
+      summary.value = {
+        total_cost: billing.total_cost || 0,
+        total_credit: billing.total_credit || 0,
+      }
+    } catch (e) {
+      if (token !== loadToken.value) return
+      fail(e)
+    }
+  },
+})
 
 const tableRows = computed(() => {
   if (!bills.value.length) return [] as BillRow[]
@@ -53,7 +80,11 @@ async function loadFromCache() {
   try {
     const response = await billingApi.yearly({ account_id: accountId.value }, { cache_only: true })
     if (token !== loadToken.value) return
-    const billing = apiObject(response) as any
+    const billing = apiObject(response) as {
+      items?: BillRow[]
+      total_cost?: number
+      total_credit?: number
+    } | null
     if (billing?.items?.length) {
       bills.value = billing.items
       summary.value = { total_cost: billing.total_cost || 0, total_credit: billing.total_credit || 0 }
@@ -66,20 +97,7 @@ async function query() {
     toast.warning('请选择账号')
     return
   }
-  const token = ++loadToken.value
-  loading.value = true
-  try {
-    const response = await billingApi.yearly({ account_id: accountId.value }, { refresh: true })
-    if (token !== loadToken.value) return
-    const billing = apiObject(response) as any
-    bills.value = billing.items || []
-    summary.value = { total_cost: billing.total_cost || 0, total_credit: billing.total_credit || 0 }
-  } catch (e) {
-    if (token !== loadToken.value) return
-    toast.error(errorMessage(e, '查询失败'))
-  } finally {
-    if (token === loadToken.value) loading.value = false
-  }
+  await onRefresh()
 }
 
 watch(accountId, () => {
@@ -97,8 +115,8 @@ onMounted(() => {
   <div class="flex flex-1 flex-col gap-4">
     <PageHeader title="账单概览" description="查询最近 12 个完整月和当月费用。">
       <div class="w-48"><AccountSelect v-model="accountId" /></div>
-      <Button size="sm" :disabled="!accountId || loading" @click="query">
-        <RefreshCw class="size-4" :class="loading && 'animate-spin'" />
+      <Button size="sm" :disabled="!accountId || loading || refreshing" @click="query">
+        <RefreshCw class="size-4" :class="refreshing && 'animate-spin'" />
         刷新账单
       </Button>
     </PageHeader>

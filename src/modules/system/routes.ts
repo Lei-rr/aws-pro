@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { configIndex, healthShow } from './controller.js'
+import { configIndex, healthShow } from './controllers/system-controller.js'
 
 /** Public system routes (no auth). */
 export async function routes(app: FastifyInstance) {

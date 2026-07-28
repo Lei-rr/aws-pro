@@ -5,7 +5,7 @@ import { AwsClientFactory } from '../client-factory.js'
 import { awsCall } from '../errors.js'
 
 export class RegionProvider {
-  constructor(private readonly clients = new AwsClientFactory()) {}
+  constructor(private readonly clients: AwsClientFactory) {}
 
   async regions(account: AwsAccount) {
     return awsCall('account.list_regions', async () => {

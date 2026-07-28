@@ -1,5 +1,5 @@
 import type { FastifyRequest } from 'fastify'
-import { AuthConfig } from '../../lib/auth/auth-config.js'
+import type { AuthConfig } from '../../lib/auth/auth-config.js'
 import { ApiError } from '../../lib/http/api-error.js'
 import { getUsername, isSignedIn, signIn, signOut } from '../../lib/auth/auth-session.js'
 
@@ -9,7 +9,7 @@ export interface SessionState {
 }
 
 export class SessionService {
-  constructor(private readonly authConfig: AuthConfig = new AuthConfig()) {}
+  constructor(private readonly authConfig: AuthConfig) {}
 
   async login(request: FastifyRequest, username: string, password: string): Promise<SessionState> {
     const valid = await this.authConfig.verifyCredentials(username, password)

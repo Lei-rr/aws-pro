@@ -42,9 +42,14 @@ export const useSessionStore = defineStore('session', {
     async login(username: string, password: string) {
       clearAuthCache()
       const me = apiObject(await authApi.login(username, password)) as SessionPayload
-      this.authenticated = me.authenticated !== false
-      this.username = String(me.username || username)
+      // Same rule as load(): only explicit authenticated===true counts as signed-in.
+      this.authenticated = me.authenticated === true
+      this.username = this.authenticated ? String(me.username || username) : ''
       this.checked = true
+      if (!this.authenticated) {
+        clearAuthCache()
+        throw new Error('unauthorized')
+      }
     },
     async logout() {
       try {

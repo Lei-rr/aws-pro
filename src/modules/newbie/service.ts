@@ -9,9 +9,9 @@ export class NewbieTaskService {
   private readonly jobs = new Map<string, Promise<void>>()
 
   constructor(
-    private readonly accounts: AccountService = new AccountService(),
-    private readonly tasks = new NewbieTaskRepository(),
-    private readonly runner = new NewbieTaskRunner(),
+    private readonly accounts: AccountService,
+    private readonly tasks: NewbieTaskRepository,
+    private readonly runner: NewbieTaskRunner,
   ) {}
 
   /** Resume unfinished tasks after process restart (idempotent). */

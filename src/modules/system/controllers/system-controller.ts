@@ -1,7 +1,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify'
-import { success } from '../../lib/http/api-response.js'
-import { getDataRoot } from '../../lib/storage/json-store.js'
-import { globalCache } from '../../lib/cache/cache-service.js'
+import { success } from '../../../lib/http/api-response.js'
+import { getDataRoot } from '../../../lib/storage/json-store.js'
+import { globalCache } from '../../../lib/cache/cache-service.js'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 

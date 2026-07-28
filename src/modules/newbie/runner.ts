@@ -12,7 +12,6 @@ import {
   CreateFunctionCommand,
   DeleteFunctionCommand,
   GetFunctionCommand,
-  InvokeCommand,
 } from '@aws-sdk/client-lambda'
 import {
   CreateDBInstanceCommand,
@@ -29,12 +28,14 @@ type LogFn = (message: string, ...args: any[]) => void
 type CancelFn = () => boolean | Promise<boolean>
 
 const REGION = 'us-east-1'
+/** 状态/重试轮询间隔（用户约定 3s） */
+const POLL_MS = 3000
 const STEPS: Record<string, string> = {
   all: '全部任务',
   budget: '设置 AWS Cost Budget',
-  ec2: '启动并终止 EC2 实例',
-  lambda: '创建并调用 Lambda 函数',
-  rds: '创建并清理 RDS 数据库',
+  ec2: '创建并终止 EC2 实例（不等 running）',
+  lambda: '创建并清理 Lambda 函数',
+  rds: '创建并清理 RDS 数据库（不等 available）',
 }
 
 function fmt(message: string, args: any[]) {
@@ -43,7 +44,7 @@ function fmt(message: string, args: any[]) {
 }
 
 export class NewbieTaskRunner {
-  constructor(private readonly clients = new AwsClientFactory()) {}
+  constructor(private readonly clients: AwsClientFactory) {}
 
   hasStep(step: string) {
     return Boolean(STEPS[step])
@@ -152,28 +153,19 @@ export class NewbieTaskRunner {
       } catch (error) {
         id = await this.findEc2InstanceByName(client, name)
         if (!id) throw error
-        log(fmt('实例 %s 已存在，继续轮询状态。', [id]))
+        log(fmt('实例 %s 已存在，继续。', [id]))
       }
       if (!id) id = await this.findEc2InstanceByName(client, name)
       if (!id) throw new Error('EC2 RunInstances returned empty instance id')
-      log(fmt('实例 %s 启动中，等待 running...', [id]))
-      let running = false
-      for (let i = 0; i < 40; i++) {
-        await this.ensureNotCancelled(cancelled)
-        await this.sleep(3000)
-        try {
-          const state = await this.ec2State(client, id)
-          if (state === 'running') {
-            log('状态：running，任务达成')
-            running = true
-            break
-          }
-          log(fmt('当前状态：%s', [state || 'unknown']))
-        } catch (error) {
-          log(fmt('查询实例状态失败，继续等待：%s', [error instanceof Error ? error.message : String(error)]))
-        }
+
+      // 产品约定：拿到 instance id = 启动任务达成，不等 running（pending 可能要几分钟）
+      try {
+        const state = await this.ec2State(client, id)
+        log(fmt('实例 %s 启动请求已成功，当前状态：%s（不等 running，直接终止清理）', [id, state || 'unknown']))
+      } catch {
+        log(fmt('实例 %s 启动请求已成功（查询状态暂不可用，直接终止清理）', [id]))
       }
-      if (!running) throw new Error('EC2 instance did not reach running state')
+      log('EC2 启动任务达成')
     } finally {
       if (id) await this.terminateEc2Instance(client, id, log)
     }
@@ -188,43 +180,24 @@ export class NewbieTaskRunner {
     try {
       const role = await this.createOrGetRole(iam, roleName)
       const roleArn = String((role as any)?.Role?.Arn ?? '')
-      log(fmt('临时 IAM 角色 %s 创建成功，等待生效...', [roleName]))
-      await this.sleep(10000)
+      if (!roleArn) throw new Error('IAM role ARN empty after create/get')
+      log(fmt('临时 IAM 角色 %s 创建成功，CreateFunction 将短重试等待传播（每 %ss）', [roleName, String(POLL_MS / 1000)]))
       await this.ensureNotCancelled(cancelled)
+      // CreateFunction 成功 = 任务达成；不空等 Active / 不强依赖 Invoke
       await this.createLambdaFunction(lambda, functionName, roleArn, log, cancelled)
-      log(fmt('函数 %s 创建成功，等待 active...', [functionName]))
-      let active = false
-      for (let i = 0; i < 30; i++) {
-        await this.ensureNotCancelled(cancelled)
-        await this.sleep(2000)
-        try {
-          const fn = await withAwsRetry('get newbie Lambda function state', () =>
-            lambda.send(new GetFunctionCommand({ FunctionName: functionName })),
-          )
-          const state = String(fn?.Configuration?.State ?? '')
-          if (state === 'Active') {
-            active = true
-            break
-          }
-          log(fmt('当前状态：%s', [state || 'unknown']))
-        } catch (error) {
-          log(fmt('查询 Lambda 状态失败，继续等待：%s', [error instanceof Error ? error.message : String(error)]))
-        }
+      try {
+        const fn = await withAwsRetry('get newbie Lambda function state', () =>
+          lambda.send(new GetFunctionCommand({ FunctionName: functionName })),
+        )
+        const state = String(fn?.Configuration?.State ?? '')
+        log(fmt('函数 %s 创建请求已成功，当前状态：%s（不等 Active，直接清理）', [functionName, state || 'unknown']))
+      } catch {
+        log(fmt('函数 %s 创建请求已成功（查询状态暂不可用，直接清理）', [functionName]))
       }
-      if (!active) throw new Error('Lambda function did not reach Active state')
-      await this.ensureNotCancelled(cancelled)
-      const invoke = await withAwsRetry('invoke newbie Lambda function', () =>
-        lambda.send(new InvokeCommand({ FunctionName: functionName })),
-      )
-      const statusCode = Number(invoke?.StatusCode ?? 0)
-      const functionError = String(invoke?.FunctionError ?? '')
-      if (statusCode < 200 || statusCode >= 300 || functionError) {
-        throw new Error(`Lambda invoke failed, status=${statusCode} error=${functionError || 'none'}`)
-      }
-      log('Lambda 调用成功，任务达成')
+      log('Lambda 创建任务达成')
     } finally {
       await this.deleteLambdaFunction(lambda, functionName, log)
-      await this.sleep(3000)
+      await this.sleep(POLL_MS)
       try {
         await this.deleteIamRole(iam, roleName, log)
       } catch (error) {
@@ -238,7 +211,6 @@ export class NewbieTaskRunner {
     const rds = this.clients.rds(account, REGION)
     const dbName = `db-${this.shortId(operationId, 12)}`
     let created = false
-    let available = false
     try {
       try {
         const result = await withAwsRetry('create newbie RDS instance', () =>
@@ -257,30 +229,61 @@ export class NewbieTaskRunner {
         if (!result?.DBInstance?.DBInstanceIdentifier) throw new Error('RDS CreateDBInstance returned empty instance id')
       } catch (error) {
         if (!(await this.rdsExists(rds, dbName))) throw error
-        log(fmt('数据库 %s 已存在，继续轮询状态。', [dbName]))
+        log(fmt('数据库 %s 已存在，继续清理。', [dbName]))
       }
       created = true
-      log(fmt('数据库 %s 正在创建，等待 available...', [dbName]))
-      for (let i = 0; i < 30; i++) {
-        await this.ensureNotCancelled(cancelled)
-        await this.sleep(30000)
-        try {
-          const status = await this.rdsStatus(rds, dbName)
-          log(fmt('当前状态：%s', [status || 'unknown']))
-          if (status === 'available') {
-            log('数据库已就绪，任务达成')
-            available = true
-            break
-          }
-        } catch (error) {
-          log(fmt('查询数据库状态失败，继续等待：%s', [error instanceof Error ? error.message : String(error)]))
-        }
+      // 产品约定：CreateDBInstance 成功 / 实例已出现 = 任务达成。
+      // 不等 available（creating 可能 10+ 分钟），立刻进入清理。
+      try {
+        const status = await this.rdsStatus(rds, dbName)
+        log(fmt('数据库 %s 创建请求已成功，当前状态：%s（不等 available，直接清理）', [dbName, status || 'unknown']))
+      } catch {
+        log(fmt('数据库 %s 创建请求已成功（查询状态暂不可用，直接清理）', [dbName]))
       }
-      if (!available) log('等待超时，数据库可能仍在创建中，接下来继续自动清理。')
+      log('RDS 创建任务达成')
     } finally {
       if (created) await this.cleanupRds(rds, dbName, log)
     }
-    if (!available) throw new Error('RDS instance did not reach available state')
+  }
+
+  private async cleanupRds(rds: any, dbName: string, log: LogFn) {
+    log(fmt('开始清理数据库 %s ...', [dbName]))
+    // creating 阶段 Delete 常被拒，短重试；deleting / 指令已接受即结束，绝不空等消失
+    for (let i = 0; i < 8; i++) {
+      try {
+        const status = await this.rdsStatus(rds, dbName)
+        if (!status) {
+          log(fmt('清理结果：RDS 数据库 %s 已不存在', [dbName]))
+          return
+        }
+        if (status === 'deleting') {
+          log(fmt('清理结果：RDS 数据库 %s 删除中（视为清理完成）', [dbName]))
+          return
+        }
+        try {
+          await withAwsRetry('delete newbie RDS instance', () =>
+            rds.send(
+              new DeleteDBInstanceCommand({
+                DBInstanceIdentifier: dbName,
+                SkipFinalSnapshot: true,
+                DeleteAutomatedBackups: true,
+              }),
+            ),
+          )
+          log(fmt('清理结果：RDS 数据库 %s 删除指令已接受（视为清理完成）', [dbName]))
+          return
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error)
+          // creating 时删不了：等几秒再试；试满仍失败则记日志结束（控制台可手删）
+          log(fmt('当前状态 %s 暂时不能删除（%s），稍后重试…', [status, msg]))
+        }
+      } catch {
+        log(fmt('清理结果：RDS 数据库 %s 已不存在', [dbName]))
+        return
+      }
+      await this.sleep(POLL_MS)
+    }
+    log(fmt('清理结果：RDS 数据库 %s 删除指令暂未发出（creating 中常见），请到控制台确认或稍后手删', [dbName]))
   }
 
   private async createLambdaFunction(lambda: any, functionName: string, roleArn: string, log: LogFn, cancelled: CancelFn) {
@@ -291,19 +294,20 @@ export class NewbieTaskRunner {
       Handler: 'lambda_function.lambda_handler',
       Code: { ZipFile: this.lambdaZip() },
     }
-    for (let i = 0; i < 2; i++) {
+    // IAM 传播慢时 Create 会失败：最多约 45s（15×3s），成功即返回
+    for (let i = 0; i < 15; i++) {
       await this.ensureNotCancelled(cancelled)
       try {
         await withAwsRetry('create newbie Lambda function', () => lambda.send(new CreateFunctionCommand(input)))
         return
       } catch (error) {
         if (await this.lambdaFunctionExists(lambda, functionName)) {
-          log(fmt('函数 %s 已存在，继续轮询状态。', [functionName]))
+          log(fmt('函数 %s 已存在，视为创建成功。', [functionName]))
           return
         }
-        if (i === 1) throw error
-        log(fmt('函数创建暂未成功，等待 IAM 角色传播后重试：%s', [error instanceof Error ? error.message : String(error)]))
-        await this.sleep(5000)
+        if (i === 14) throw error
+        log(fmt('函数创建暂未成功（IAM 传播中），%ss 后重试：%s', [String(POLL_MS / 1000), error instanceof Error ? error.message : String(error)]))
+        await this.sleep(POLL_MS)
       }
     }
   }
@@ -332,7 +336,7 @@ export class NewbieTaskRunner {
         try {
           return await withAwsRetry('get newbie IAM role', () => iam.send(new GetRoleCommand({ RoleName: roleName })))
         } catch {
-          await this.sleep(2000)
+          await this.sleep(POLL_MS)
         }
       }
       throw error
@@ -353,23 +357,16 @@ export class NewbieTaskRunner {
       await withAwsRetry('delete newbie Lambda function', () => lambda.send(new DeleteFunctionCommand({ FunctionName: functionName })), [
         'ResourceNotFoundException',
       ])
-      log(fmt('Lambda 函数 %s 删除指令已接受', [functionName]))
+      // 产品约定：删除指令已接受 = 清理完成，不必轮询到函数完全消失
+      log(fmt('清理结果：Lambda 函数 %s 删除指令已接受（视为清理完成）', [functionName]))
     } catch (error) {
-      log(fmt('清理结果：Lambda 函数 %s cleanup_failed：%s', [functionName, error instanceof Error ? error.message : String(error)]))
-      return
-    }
-    for (let i = 0; i < 30; i++) {
-      await this.sleep(2000)
-      try {
-        await withAwsRetry('get newbie Lambda function deletion state', () =>
-          lambda.send(new GetFunctionCommand({ FunctionName: functionName })),
-        )
-      } catch {
-        log(fmt('清理结果：Lambda 函数 %s cleanup_confirmed', [functionName]))
+      const msg = error instanceof Error ? error.message : String(error)
+      if (/ResourceNotFound|Function not found/i.test(msg)) {
+        log(fmt('清理结果：Lambda 函数 %s 已不存在', [functionName]))
         return
       }
+      log(fmt('清理结果：Lambda 函数 %s cleanup_failed：%s', [functionName, msg]))
     }
-    log(fmt('清理结果：Lambda 函数 %s cleanup_timeout', [functionName]))
   }
 
   private async terminateEc2Instance(client: any, id: string, log: LogFn) {
@@ -378,69 +375,21 @@ export class NewbieTaskRunner {
         client.send(new TerminateInstancesCommand({ InstanceIds: [id] })),
       )
       const state = String((result as any)?.TerminatingInstances?.[0]?.CurrentState?.Name ?? '')
-      log(fmt('实例 %s 已发送终止指令，当前状态：%s', [id, state || 'unknown']))
+      // 终止中 / 已终止 都算清理完成，不空等 terminated
+      log(
+        fmt('清理结果：EC2 实例 %s 终止指令已接受，当前状态：%s（视为清理完成）', [
+          id,
+          state || 'unknown',
+        ]),
+      )
     } catch (error) {
-      log(fmt('清理结果：EC2 实例 %s cleanup_failed：%s', [id, error instanceof Error ? error.message : String(error)]))
-      return
-    }
-    for (let i = 0; i < 80; i++) {
-      await this.sleep(3000)
-      try {
-        const state = await this.ec2State(client, id)
-        if (state === 'terminated') {
-          log(fmt('清理结果：EC2 实例 %s cleanup_confirmed', [id]))
-          return
-        }
-        log(fmt('当前终止状态：%s', [state || 'unknown']))
-      } catch (error) {
-        if (String((error as any)?.name || '').includes('InvalidInstanceID')) {
-          log(fmt('清理结果：EC2 实例 %s cleanup_confirmed', [id]))
-          return
-        }
-      }
-    }
-    log(fmt('清理结果：EC2 实例 %s cleanup_timeout', [id]))
-  }
-
-  private async cleanupRds(rds: any, dbName: string, log: LogFn) {
-    log(fmt('开始清理数据库 %s ...', [dbName]))
-    let deleteRequested = false
-    for (let i = 0; i < 36; i++) {
-      try {
-        const status = await this.rdsStatus(rds, dbName)
-        if (!status) {
-          log(fmt('清理结果：RDS 数据库 %s cleanup_confirmed', [dbName]))
-          return
-        }
-        if (status === 'deleting') {
-          log(fmt('数据库 %s 删除中，当前状态：%s', [dbName, status]))
-          await this.sleep(30000)
-          continue
-        }
-        if (!deleteRequested) {
-          try {
-            await withAwsRetry('delete newbie RDS instance', () =>
-              rds.send(
-                new DeleteDBInstanceCommand({
-                  DBInstanceIdentifier: dbName,
-                  SkipFinalSnapshot: true,
-                  DeleteAutomatedBackups: true,
-                }),
-              ),
-            )
-            deleteRequested = true
-            log(fmt('删除指令已发送，当前状态：%s', [status]))
-          } catch (error) {
-            log(fmt('当前状态 %s 暂时不能删除，稍后重试：%s', [status, error instanceof Error ? error.message : String(error)]))
-          }
-        }
-      } catch {
-        log(fmt('清理结果：RDS 数据库 %s cleanup_confirmed', [dbName]))
+      const msg = error instanceof Error ? error.message : String(error)
+      if (/InvalidInstanceID|NotFound/i.test(msg)) {
+        log(fmt('清理结果：EC2 实例 %s 已不存在', [id]))
         return
       }
-      await this.sleep(30000)
+      log(fmt('清理结果：EC2 实例 %s cleanup_failed：%s', [id, msg]))
     }
-    log(fmt('清理结果：RDS 数据库 %s cleanup_timeout', [dbName]))
   }
 
   private async latestAmazonLinuxAmi(client: any) {
@@ -478,7 +427,7 @@ export class NewbieTaskRunner {
           if (id) return id
         }
       }
-      await this.sleep(2000)
+      await this.sleep(POLL_MS)
     }
     return ''
   }
@@ -501,7 +450,7 @@ export class NewbieTaskRunner {
         await this.rdsStatus(rds, dbName)
         return true
       } catch {
-        await this.sleep(2000)
+        await this.sleep(POLL_MS)
       }
     }
     return false
@@ -515,7 +464,7 @@ export class NewbieTaskRunner {
         )
         return true
       } catch {
-        await this.sleep(1000)
+        await this.sleep(POLL_MS)
       }
     }
     return false
@@ -527,42 +476,44 @@ export class NewbieTaskRunner {
         await withAwsRetry('get newbie Lambda function', () => lambda.send(new GetFunctionCommand({ FunctionName: functionName })))
         return true
       } catch {
-        await this.sleep(2000)
+        await this.sleep(POLL_MS)
       }
     }
     return false
   }
 
+  /**
+   * Build a minimal, valid ZIP (stored) with correct CRC32.
+   * Hand-rolled ZIP with CRC=0 is rejected by Lambda: "error in the archive format".
+   */
   private lambdaZip() {
-    // Minimal zip containing lambda_function.py with a hello handler.
-    // Prebuilt zip bytes for: def lambda_handler(event, context): return {"ok": True}
-    // Using a tiny valid zip archive.
     const source = 'def lambda_handler(event, context):\n    return {"ok": True}\n'
-    // Create zip manually via zlib + local headers is heavy; use simple stored zip.
     const name = Buffer.from('lambda_function.py')
-    const data = Buffer.from(source)
+    const data = Buffer.from(source, 'utf8')
+    const crc = this.crc32(data)
     const localHeader = Buffer.alloc(30 + name.length)
-    localHeader.writeUInt32LE(0x04034b50, 0)
-    localHeader.writeUInt16LE(20, 4)
-    localHeader.writeUInt16LE(0, 6)
-    localHeader.writeUInt16LE(0, 8) // stored
-    localHeader.writeUInt16LE(0, 10)
-    localHeader.writeUInt16LE(0, 12)
-    localHeader.writeUInt32LE(0, 14) // crc placeholder 0 for simplicity in controlled env
+    localHeader.writeUInt32LE(0x04034b50, 0) // local file header
+    localHeader.writeUInt16LE(20, 4) // version needed
+    localHeader.writeUInt16LE(0, 6) // flags
+    localHeader.writeUInt16LE(0, 8) // compression: stored
+    localHeader.writeUInt16LE(0, 10) // mod time
+    localHeader.writeUInt16LE(0, 12) // mod date
+    localHeader.writeUInt32LE(crc >>> 0, 14)
     localHeader.writeUInt32LE(data.length, 18)
     localHeader.writeUInt32LE(data.length, 22)
     localHeader.writeUInt16LE(name.length, 26)
     localHeader.writeUInt16LE(0, 28)
     name.copy(localHeader, 30)
+
     const central = Buffer.alloc(46 + name.length)
-    central.writeUInt32LE(0x02014b50, 0)
-    central.writeUInt16LE(20, 4)
-    central.writeUInt16LE(20, 6)
+    central.writeUInt32LE(0x02014b50, 0) // central directory
+    central.writeUInt16LE(20, 4) // version made by
+    central.writeUInt16LE(20, 6) // version needed
     central.writeUInt16LE(0, 8)
     central.writeUInt16LE(0, 10)
     central.writeUInt16LE(0, 12)
     central.writeUInt16LE(0, 14)
-    central.writeUInt32LE(0, 16)
+    central.writeUInt32LE(crc >>> 0, 16)
     central.writeUInt32LE(data.length, 20)
     central.writeUInt32LE(data.length, 24)
     central.writeUInt16LE(name.length, 28)
@@ -571,8 +522,9 @@ export class NewbieTaskRunner {
     central.writeUInt16LE(0, 34)
     central.writeUInt16LE(0, 36)
     central.writeUInt32LE(0, 38)
-    central.writeUInt32LE(0, 42)
+    central.writeUInt32LE(0, 42) // relative offset of local header
     name.copy(central, 46)
+
     const end = Buffer.alloc(22)
     end.writeUInt32LE(0x06054b50, 0)
     end.writeUInt16LE(0, 4)
@@ -583,6 +535,18 @@ export class NewbieTaskRunner {
     end.writeUInt32LE(localHeader.length + data.length, 16)
     end.writeUInt16LE(0, 20)
     return Buffer.concat([localHeader, data, central, end])
+  }
+
+  private crc32(buf: Buffer): number {
+    let crc = 0xffffffff
+    for (let i = 0; i < buf.length; i++) {
+      crc ^= buf[i]
+      for (let j = 0; j < 8; j++) {
+        const mask = -(crc & 1)
+        crc = (crc >>> 1) ^ (0xedb88320 & mask)
+      }
+    }
+    return (crc ^ 0xffffffff) >>> 0
   }
 
   private async resolveAwsAccountId(account: AwsAccount): Promise<string> {

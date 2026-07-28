@@ -7,7 +7,7 @@ type StoreShape = { items: NewbieTask[] }
 const ACTIVE = new Set(['pending', 'running', 'cancelling'])
 
 export class NewbieTaskRepository {
-  constructor(private readonly store = new JsonStore<StoreShape>('newbie-tasks.json', { items: [] })) {}
+  constructor(private readonly store: JsonStore<StoreShape>) {}
 
   async all(): Promise<NewbieTask[]> {
     const data = await this.store.read()

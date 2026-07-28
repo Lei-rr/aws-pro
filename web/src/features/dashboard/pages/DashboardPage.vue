@@ -13,15 +13,33 @@ import { apiList } from '@/shared/api/http'
 import { regionName } from '@/shared/lib/format'
 import { toast } from '@/shared/lib/toast'
 import { errorMessage } from '@/shared/lib/errors'
-import { withMinLoading } from '@/shared/lib/loading'
+import { useListPage } from '@/shared/lib/use-list-page'
 import type { AwsInstance } from '@/shared/types'
 
-const loading = ref(false)
-const refreshing = ref(false)
 const lightsailInstances = ref<AwsInstance[]>([])
 const ec2Instances = ref<AwsInstance[]>([])
 const accountStore = useAccountStore()
 const configStore = useConfigStore()
+
+const { loading, refreshing, runLoad, onRefresh, fail } = useListPage({
+  pageSizeScope: 'aws-dashboard',
+  load: async () => {
+    try {
+      const [, , ls, ec2] = await Promise.all([
+        loadAccounts({ refresh: true }),
+        loadConfig({ refresh: true }),
+        lightsailApi.instances(),
+        ec2Api.instances(),
+      ])
+      lightsailInstances.value = apiList<AwsInstance>(ls, ['items'])
+      ec2Instances.value = apiList<AwsInstance>(ec2, ['items'])
+    } catch (e) {
+      lightsailInstances.value = []
+      ec2Instances.value = []
+      fail(e)
+    }
+  },
+})
 
 const accounts = computed(() => accountStore.accounts || [])
 const instances = computed(() => [...lightsailInstances.value, ...ec2Instances.value])
@@ -72,36 +90,7 @@ const accountRegionSummary = computed((): AccountSummary[] => {
     .sort((a, b) => b.total - a.total || a.accountId.localeCompare(b.accountId))
 })
 
-async function load(options: { toastRefresh?: boolean } = {}) {
-  await withMinLoading(loading, async () => {
-    try {
-      const [, , ls, ec2] = await Promise.all([
-        loadAccounts({ refresh: true }),
-        loadConfig({ refresh: true }),
-        lightsailApi.instances(),
-        ec2Api.instances(),
-      ])
-      lightsailInstances.value = apiList<AwsInstance>(ls, ['items'])
-      ec2Instances.value = apiList<AwsInstance>(ec2, ['items'])
-      if (options.toastRefresh) toast.success('已刷新')
-    } catch (e) {
-      lightsailInstances.value = []
-      ec2Instances.value = []
-      toast.error(errorMessage(e, '加载控制台数据失败'))
-    }
-  })
-}
-
-async function onRefresh() {
-  refreshing.value = true
-  try {
-    await load({ toastRefresh: true })
-  } finally {
-    refreshing.value = false
-  }
-}
-
-onMounted(() => load())
+onMounted(() => runLoad())
 </script>
 
 <template>

@@ -8,10 +8,10 @@
 AWS 账号 / Lightsail / EC2 / 区域 / 配额 / 账单 / 新手任务管理面板（Node.js 版）。
 
 - 后端：Fastify 5 + TypeScript
-- 前端：Vue 3 + Vite + Ant Design Vue + Pinia
+- 前端：Vue 3 + Vite + Tailwind CSS + shadcn 风格组件
 - 存储：本地 JSON（无数据库）
 - 部署：Docker + GitHub Actions → GHCR
-- 底座理念：与 dns-pro 对齐（**插件 ≠ 模块**，见 [docs/FOUNDATION.md](docs/FOUNDATION.md)）
+- 底座理念：与 dns-pro 对齐（**插件 ≠ 模块**）
 
 > **默认分支：`fast`**（Node / Fastify / Vue 版本）
 
@@ -129,8 +129,6 @@ echo <GITHUB_TOKEN> | docker login ghcr.io -u <GITHUB_USER> --password-stdin
 ```
 
 ## 架构
-
-> 权威说明见 [docs/FOUNDATION.md](docs/FOUNDATION.md)。
 
 | 词 | 含义 | 目录 |
 |---|---|---|

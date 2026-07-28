@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { sessionDelete, sessionShow, sessionStore } from './controller.js'
+import { sessionDelete, sessionShow, sessionStore } from './controllers/session-controller.js'
 
 export async function routes(app: FastifyInstance) {
   app.post('/session', sessionStore)

@@ -5,8 +5,8 @@ import { QuotaProvider } from '../../lib/aws/providers/quota-provider.js'
 
 export class QuotaService {
   constructor(
-    private readonly accounts: AccountService = new AccountService(),
-    private readonly provider = new QuotaProvider(),
+    private readonly accounts: AccountService,
+    private readonly provider: QuotaProvider,
   ) {}
 
   async vcpuQuota(body: Record<string, unknown>, mode: CacheReadMode = {}) {

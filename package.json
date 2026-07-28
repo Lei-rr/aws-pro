@@ -64,5 +64,8 @@
     "quota",
     "panel"
   ],
+  "repository": {"type": "git", "url": "git+https://github.com/lei-rr/aws-pro.git"},
+  "bugs": {"url": "https://github.com/lei-rr/aws-pro/issues"},
+  "homepage": "https://github.com/lei-rr/aws-pro#readme",
   "license": "MIT"
 }

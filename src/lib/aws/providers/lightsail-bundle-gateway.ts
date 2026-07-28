@@ -5,7 +5,7 @@ import { AwsClientFactory } from '../client-factory.js'
 import { awsCall } from '../errors.js'
 
 export class LightsailBundleGateway {
-  constructor(private readonly clients = new AwsClientFactory()) {}
+  constructor(private readonly clients: AwsClientFactory) {}
 
   async bundles(account: AwsAccount, region: string) {
     return awsCall('lightsail.bundles', async () => {

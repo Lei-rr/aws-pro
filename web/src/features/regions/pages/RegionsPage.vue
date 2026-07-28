@@ -13,6 +13,7 @@ import { regionName } from '@/shared/lib/format'
 import { toast } from '@/shared/lib/toast'
 import { errorMessage } from '@/shared/lib/errors'
 import { confirmDialog } from '@/shared/ui/confirm'
+import { useListPage } from '@/shared/lib/use-list-page'
 
 type RegionRow = { account_id?: string; region: string; status?: string }
 
@@ -24,13 +25,28 @@ const STATUS: Record<string, { text: string; ok?: boolean }> = {
   ENABLED_BY_DEFAULT: { text: '默认启用', ok: true },
 }
 
-const loading = ref(false)
 const enabling = ref('')
 const accountId = ref('')
 const configuredRegions = ref<Record<string, string>>({})
 const items = ref<RegionRow[]>([])
 const loadToken = ref(0)
 const configStore = useConfigStore()
+
+const { loading, refreshing, runLoad, onRefresh, fail } = useListPage({
+  pageSizeScope: 'aws-regions',
+  load: async (options = {}) => {
+    if (!accountId.value) return
+    const token = ++loadToken.value
+    try {
+      const response = await regionsApi.list(accountId.value, { refresh: options.refresh })
+      if (token !== loadToken.value) return
+      items.value = apiList<RegionRow>(response, ['items'])
+    } catch (e) {
+      if (token !== loadToken.value) return
+      fail(e)
+    }
+  },
+})
 
 function statusMeta(status?: string) {
   return STATUS[status || ''] || { text: status || '未知' }
@@ -66,18 +82,8 @@ async function loadFromCache() {
 
 async function query(refresh = false) {
   if (!accountId.value) return
-  loading.value = true
-  const token = ++loadToken.value
-  try {
-    const response = await regionsApi.list(accountId.value, { refresh })
-    if (token !== loadToken.value) return
-    items.value = apiList<RegionRow>(response, ['items'])
-  } catch (e) {
-    if (token !== loadToken.value) return
-    toast.error(errorMessage(e, '查询区域失败'))
-  } finally {
-    if (token === loadToken.value) loading.value = false
-  }
+  if (refresh) await onRefresh()
+  else await runLoad()
 }
 
 async function enableRegion(row: RegionRow) {
@@ -91,7 +97,8 @@ async function enableRegion(row: RegionRow) {
   try {
     await regionsApi.enable({ account_id: accountId.value, region: row.region })
     toast.success('已提交启用请求')
-    await query(true)
+    // 静默刷新列表，勿再 toast「已刷新」
+    await runLoad({ refresh: true })
   } catch (e) {
     toast.error(errorMessage(e, '启用区域失败'))
   } finally {
@@ -116,8 +123,8 @@ onMounted(async () => {
       <div class="w-48">
         <AccountSelect v-model="accountId" />
       </div>
-      <Button size="sm" :disabled="!accountId || loading" @click="query(true)">
-        <RefreshCw class="size-4" :class="loading && 'animate-spin'" />
+      <Button size="sm" :disabled="!accountId || loading || refreshing" @click="query(true)">
+        <RefreshCw class="size-4" :class="refreshing && 'animate-spin'" />
         刷新区域
       </Button>
     </PageHeader>

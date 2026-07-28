@@ -4,7 +4,7 @@ import type { AwsAccount } from '../../types/aws.js'
 type StoreShape = { items: AwsAccount[] }
 
 export class AccountRepository {
-  constructor(private readonly store = new JsonStore<StoreShape>('accounts.json', { items: [] })) {}
+  constructor(private readonly store: JsonStore<StoreShape>) {}
 
   async all(): Promise<AwsAccount[]> {
     const data = await this.store.read()

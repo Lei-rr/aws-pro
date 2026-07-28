@@ -10,10 +10,10 @@ import { AccountService } from '../account/service.js'
 
 export class LightsailService {
   constructor(
-    private readonly accounts: AccountService = new AccountService(),
-    private readonly provider = new LightsailProvider(),
-    private readonly bundles = new LightsailBundleGateway(),
-    private readonly instances = new LightsailInstanceRepository(),
+    private readonly accounts: AccountService,
+    private readonly provider: LightsailProvider,
+    private readonly bundles: LightsailBundleGateway,
+    private readonly instances: LightsailInstanceRepository,
   ) {}
 
   async listCached(accountId?: string, region?: string) {
