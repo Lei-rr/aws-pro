@@ -1,7 +1,7 @@
 # aws-pro
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-22%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![GHCR](https://img.shields.io/badge/GHCR-lei--rr%2Faws--pro-blue?logo=github)](https://ghcr.io/lei-rr/aws-pro)
 [![Branch](https://img.shields.io/badge/branch-fast-success)](https://github.com/lei-rr/aws-pro/tree/fast)
 
@@ -31,7 +31,7 @@ AWS 账号 / Lightsail / EC2 / 区域 / 配额 / 账单 / 新手任务管理面�
 
 ### 环境要求
 
-- Node.js `>= 20`
+- Node.js `>= 22.13`
 - npm `>= 10`
 - 可选：Docker / Docker Compose
 
@@ -53,6 +53,8 @@ http://127.0.0.1:2023
 
 默认登录：`admin / admin`  
 （未配置 `data/config.json`，或用户名/密码为空时自动使用该默认值）
+
+Session 密钥优先读取 `SESSION_SECRET`；未设置时会自动生成并持久化到 `data/session-secret`。部署升级时请保留该文件。
 
 ### 开发
 
@@ -149,6 +151,7 @@ API        → /api
 | 文件 | 说明 |
 |---|---|
 | `data/config.json` | 登录账号（可选；缺省默认 admin/admin） |
+| `data/session-secret` | 自动生成的 Session 密钥（升级时保留；可用 `SESSION_SECRET` 覆盖） |
 | `data/accounts.json` | AWS 账号密钥 |
 | `data/lightsail-instances.json` | Lightsail 缓存 |
 | `data/ec2-instances.json` | EC2 缓存 |

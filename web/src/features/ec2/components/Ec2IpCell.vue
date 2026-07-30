@@ -4,8 +4,8 @@ import CopyButton from '@/shared/components/CopyButton.vue'
 import type { AwsInstance } from '@/shared/types'
 
 const props = defineProps<{ row: AwsInstance }>()
-const ipv4 = computed(() => String((props.row as any).public_ipv4 || props.row.public_ip || ''))
-const ipv6 = computed(() => String((props.row as any).public_ipv6 || props.row.ipv6 || ''))
+const ipv4 = computed(() => String(props.row.public_ipv4 || props.row.public_ip || ''))
+const ipv6 = computed(() => String(props.row.public_ipv6 || props.row.ipv6 || ''))
 function shortText(value: string, length = 16) {
   return value.length > length ? `${value.slice(0, length)}...` : value
 }

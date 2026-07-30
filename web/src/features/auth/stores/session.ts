@@ -1,70 +1,97 @@
+import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import { authApi, clearAuthCache } from '@/features/auth/api/auth'
+import { authApi, type SessionState } from '@/features/auth/api/auth'
 import { apiObject } from '@/shared/api/http'
+import { clearAccountsCache } from '@/features/accounts/stores/accounts'
 
-type SessionPayload = {
-  authenticated?: boolean
-  username?: string | null
+const anonymousSession: SessionState = {
+  authenticated: false,
+  username: null,
 }
 
-export const useSessionStore = defineStore('session', {
-  state: () => ({
-    authenticated: false,
-    username: '' as string,
-    loading: false,
-    checked: false,
-  }),
-  actions: {
-    async load(options: { refresh?: boolean } = {}) {
-      if (!options.refresh && this.checked) return this
-      this.loading = true
-      try {
-        const me = apiObject(await authApi.me()) as SessionPayload
-        // Backend GET /session returns 200 even when anonymous.
-        // Must trust payload.authenticated — never assume success ⇒ signed in.
-        this.authenticated = me.authenticated === true
-        this.username = this.authenticated ? String(me.username || '') : ''
-        this.checked = true
-        if (!this.authenticated) {
-          clearAuthCache()
-          throw new Error('unauthorized')
-        }
-        return this
-      } catch (error) {
-        this.authenticated = false
-        this.username = ''
-        this.checked = true
-        throw error instanceof Error ? error : new Error('unauthorized')
-      } finally {
-        this.loading = false
+export const useSessionStore = defineStore('session', () => {
+  const session = ref<SessionState | null>(null)
+  const checked = ref(false)
+  const loading = ref(false)
+  const authenticated = computed(() => session.value?.authenticated === true)
+  const username = computed(() => session.value?.username ?? null)
+
+  let pendingSession: Promise<SessionState> | null = null
+  let requestToken = 0
+
+  async function load(options: { refresh?: boolean } = {}) {
+    if (options.refresh) {
+      pendingSession = null
+      requestToken += 1
+    }
+    if (!options.refresh && checked.value && session.value) return session.value
+
+    if (!pendingSession) {
+      const token = ++requestToken
+      loading.value = true
+      const promise = authApi
+        .me()
+        .then((response) => {
+          const next = apiObject<SessionState>(response, anonymousSession)
+          if (token !== requestToken) return session.value ?? anonymousSession
+          session.value = {
+            authenticated: next.authenticated === true,
+            username: next.authenticated === true ? next.username : null,
+          }
+          checked.value = true
+          if (!session.value.authenticated) clearAccountsCache()
+          return session.value
+        })
+        .catch((error) => {
+          if (token !== requestToken) return session.value ?? anonymousSession
+          invalidate()
+          throw error
+        })
+        .finally(() => {
+          if (token !== requestToken) return
+          if (pendingSession === promise) pendingSession = null
+          loading.value = false
+        })
+      pendingSession = promise
+    }
+
+    return pendingSession
+  }
+
+  async function login(loginUsername: string, password: string) {
+    pendingSession = null
+    const token = ++requestToken
+    loading.value = true
+    try {
+      const response = await authApi.login(loginUsername, password)
+      const next = apiObject<SessionState>(response, anonymousSession)
+      if (token !== requestToken) return session.value ?? anonymousSession
+      session.value = {
+        authenticated: next.authenticated === true,
+        username: next.authenticated === true ? String(next.username || loginUsername) : null,
       }
-    },
-    async login(username: string, password: string) {
-      clearAuthCache()
-      const me = apiObject(await authApi.login(username, password)) as SessionPayload
-      // Same rule as load(): only explicit authenticated===true counts as signed-in.
-      this.authenticated = me.authenticated === true
-      this.username = this.authenticated ? String(me.username || username) : ''
-      this.checked = true
-      if (!this.authenticated) {
-        clearAuthCache()
-        throw new Error('unauthorized')
-      }
-    },
-    async logout() {
-      try {
-        await authApi.logout()
-      } catch {
-        /* ignore */
-      }
-      this.invalidate()
-    },
-    invalidate() {
-      clearAuthCache()
-      this.authenticated = false
-      this.username = ''
-      this.checked = true
-      this.loading = false
-    },
-  },
+      checked.value = true
+      clearAccountsCache()
+      if (!session.value.authenticated) throw new Error('unauthorized')
+      return session.value
+    } finally {
+      if (token === requestToken) loading.value = false
+    }
+  }
+
+  async function logout() {
+    invalidate()
+    await authApi.logout().catch(() => {})
+  }
+
+  function invalidate() {
+    pendingSession = null
+    requestToken += 1
+    session.value = anonymousSession
+    checked.value = true
+    loading.value = false
+    clearAccountsCache()
+  }
+
+  return { session, checked, loading, authenticated, username, load, login, logout, invalidate }
 })

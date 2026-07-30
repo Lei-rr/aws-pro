@@ -26,20 +26,19 @@ const actionLoadingLabel = ref('')
 const accountId = ref('')
 const region = ref('')
 const instances = ref<AwsInstance[]>([])
-const loadToken = ref(0)
 
-const { loading, refreshing, runLoad, onRefresh, fail } = useListPage({
+const { loading, runLoad, fail } = useListPage({
   pageSizeScope: 'aws-lightsail',
-  load: async () => {
-    const token = ++loadToken.value
+  load: async (options = {}) => {
     try {
       const response = await lightsailApi.instances()
-      if (token !== loadToken.value) return
+      if (options.isLatest && !options.isLatest()) return false
       instances.value = apiList<AwsInstance>(response, ['items'])
     } catch (e) {
-      if (token !== loadToken.value) return
+      if (options.isLatest && !options.isLatest()) return false
       instances.value = []
       fail(e)
+      return false
     }
   },
 })
@@ -109,12 +108,7 @@ async function sync() {
 }
 
 async function onCreated() {
-  try {
-    await syncScope(accountId.value, region.value)
-    window.dispatchEvent(new CustomEvent('instances-updated'))
-  } catch (e) {
-    toast.warning(errorMessage(e, '创建成功，但同步列表失败'))
-  }
+  window.dispatchEvent(new CustomEvent('instances-updated'))
   await runLoad()
 }
 
@@ -155,6 +149,16 @@ async function operate(row: AwsInstance, action: string) {
   await runAction(row, action)
 }
 
+async function syncAfterAction(accountId: string, targetRegion: string) {
+  try {
+    await syncScope(accountId, targetRegion)
+    window.dispatchEvent(new CustomEvent('instances-updated'))
+    await runLoad()
+  } catch (error) {
+    toast.warning(errorMessage(error, '操作已提交，但同步列表失败'))
+  }
+}
+
 async function runAction(row: AwsInstance, action: string) {
   const key = `${row.account_id}:${row.region}:${row.name}:${action}`
   if (actionLoadingKey.value) {
@@ -166,7 +170,7 @@ async function runAction(row: AwsInstance, action: string) {
   actionLoadingKey.value = key
   actionLoadingLabel.value = `${name}中`
   // 立刻反馈：toast + 行内 loading，避免等 AWS 返回像没点
-  toast.loading(`正在${name} ${target}…`)
+  const loadingToastId = toast.loading(`正在${name} ${target}…`)
   try {
     const response = await lightsailApi.action({
       action,
@@ -176,13 +180,11 @@ async function runAction(row: AwsInstance, action: string) {
       instance_name: row.name,
     })
     const result = apiObject(response) as { message?: string }
-    toast.dismiss()
+    toast.dismiss(loadingToastId)
     toast.success(result.message || `${name}已提交`)
-    await syncScope(String(row.account_id), String(row.region))
-    window.dispatchEvent(new CustomEvent('instances-updated'))
-    await runLoad()
+    await syncAfterAction(String(row.account_id), String(row.region))
   } catch (e) {
-    toast.dismiss()
+    toast.dismiss(loadingToastId)
     toast.error(errorMessage(e, `${name}失败`))
   } finally {
     actionLoadingKey.value = ''
@@ -286,8 +288,10 @@ onMounted(async () => {
       :instances="instances"
       :regions="regions"
       package-key="bundle_id"
+      page-size-scope="aws-lightsail"
       :package-label="packageLabel"
       :row-key="rowKey"
+      :row-busy="isRowActionBusy"
       :state-labels="{ running: '运行中', stopped: '已停止', pending: '处理中' }"
       empty-text="暂无 Lightsail 实例，请选择账号和区域后同步。"
       @operate="operate"
@@ -318,6 +322,7 @@ onMounted(async () => {
       v-model:open="remarkOpen"
       :saving="remarkSaving"
       :form="remarkForm"
+      @update:remark="remarkForm.remark = $event"
       @save="saveRemark"
     />
   </div>

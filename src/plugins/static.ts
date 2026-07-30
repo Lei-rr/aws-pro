@@ -15,23 +15,30 @@ const staticPluginImpl: FastifyPluginAsync = async (app) => {
     prefix: '/assets/',
     wildcard: true,
     decorateReply: false,
-    maxAge: '1y',
+    maxAge: 365 * 24 * 60 * 60 * 1000,
     immutable: true,
   })
 
-  // App shell and other root files (index.html / favicon).
+  // App shell and other root files.
   await app.register(fastifyStatic, {
     root: distDir,
     prefix: '/',
     wildcard: false,
     index: false,
-    maxAge: '1y',
-    immutable: true,
-    setHeaders(res, filePath) {
+    decorateReply: true,
+    setHeaders(reply, filePath) {
       if (filePath.endsWith('index.html')) {
-        res.setHeader('Cache-Control', 'no-store, must-revalidate')
+        reply.header('Cache-Control', 'no-store, must-revalidate')
+      } else {
+        reply.header('Cache-Control', 'public, max-age=3600')
       }
     },
+  })
+
+  app.addHook('onSend', async (request, reply) => {
+    if (request.raw.url?.startsWith('/assets/')) {
+      reply.header('Cache-Control', 'public, max-age=31536000, immutable')
+    }
   })
 }
 

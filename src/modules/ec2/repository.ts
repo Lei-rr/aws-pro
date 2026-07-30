@@ -33,6 +33,16 @@ export class Ec2InstanceRepository {
     return updated
   }
 
+  async itemsByAccount(accountId: string): Promise<Ec2Instance[]> {
+    return (await this.all()).filter((item) => item.account_id === accountId)
+  }
+
+  async replaceAccount(accountId: string, items: Ec2Instance[]): Promise<void> {
+    await this.store.transaction((current) => ({
+      next: { items: [...(current.items ?? []).filter((item) => item.account_id !== accountId), ...items] },
+    }))
+  }
+
   async deleteByAccount(accountId: string): Promise<void> {
     await this.store.transaction((current) => ({
       next: { items: (current.items ?? []).filter((i) => i.account_id !== accountId) },

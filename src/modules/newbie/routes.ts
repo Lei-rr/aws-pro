@@ -1,10 +1,11 @@
 
 import type { FastifyInstance } from 'fastify'
-import { newbieActive, newbieCancel, newbieShow, newbieStore, newbieStream } from './controllers/newbie-controller.js'
+import { newbieActive, newbieCancel, newbieRecent, newbieShow, newbieStore, newbieStream } from './controllers/newbie-controller.js'
 
 export async function routes(app: FastifyInstance) {
   app.post('/newbie/tasks', newbieStore)
   app.get('/newbie/tasks/active', newbieActive)
+  app.get('/newbie/tasks/recent', newbieRecent)
   app.get('/newbie/tasks/:task', newbieShow)
   app.post('/newbie/tasks/:task/cancel', newbieCancel)
   app.get('/newbie/tasks/:task/stream', newbieStream)

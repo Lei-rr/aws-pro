@@ -50,5 +50,15 @@ export async function withAwsRetry<T>(action: string, fn: () => Promise<T>, succ
     }
   }
   const message = last instanceof Error ? last.message : String(last ?? 'unknown error')
-  throw new Error(`${action} failed: ${message}`)
+  if (last && typeof last === 'object') {
+    const original = last as Record<string, unknown>
+    try {
+      if (last instanceof Error) last.message = `${action} failed: ${message}`
+      else original.message = `${action} failed: ${message}`
+    } catch {
+      // Some SDK errors expose a read-only message; metadata still remains on cause.
+    }
+    throw last
+  }
+  throw Object.assign(new Error(`${action} failed: ${message}`), { cause: last })
 }

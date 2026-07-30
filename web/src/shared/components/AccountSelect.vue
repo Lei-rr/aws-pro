@@ -11,7 +11,7 @@ import { loadAccounts, useAccountStore } from '@/features/accounts/stores/accoun
 import { toast } from '@/shared/lib/toast'
 import { errorMessage } from '@/shared/lib/errors'
 
-const props = defineProps<{ modelValue?: string }>()
+const props = defineProps<{ modelValue?: string; disabled?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [string]; loaded: [unknown[]] }>()
 
 const loading = ref(false)
@@ -38,7 +38,7 @@ onMounted(async () => {
 <template>
   <Select
     :model-value="modelValue || ''"
-    :disabled="loading"
+    :disabled="loading || disabled"
     @update:model-value="(v) => emit('update:modelValue', String(v || ''))"
   >
     <SelectTrigger class="w-full min-w-[10rem]">

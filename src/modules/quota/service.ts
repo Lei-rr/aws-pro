@@ -20,7 +20,7 @@ export class QuotaService {
       tags: awsAccountTags(accountId, 'quota'),
       ttlMs: CacheTtl.awsLookup,
       mode,
-      emptyOnMiss: [] as any[],
+      emptyOnMiss: [] as Array<Record<string, unknown>>,
       loader: () => this.provider.vcpuQuota(account, region),
     })
 

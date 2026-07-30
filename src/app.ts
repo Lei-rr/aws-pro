@@ -18,7 +18,9 @@ import './types/fastify.d.ts'
  * Composition root = app-context.ts (sole wiring)
  */
 export async function buildApp(config: AppConfig) {
-  const DEFAULT_SESSION_SECRET = 'aws-pro-secure-session'
+  if (config.sessionSecret.trim().length < 32) {
+    throw new Error('SESSION_SECRET must contain at least 32 characters')
+  }
 
   const app = Fastify({
     logger: config.logLevel ? { level: config.logLevel } : false,
@@ -30,10 +32,6 @@ export async function buildApp(config: AppConfig) {
       return `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
     },
   })
-
-  if (config.sessionSecret === DEFAULT_SESSION_SECRET) {
-    console.warn('[WARN] SESSION_SECRET is using the default value. Please set a strong secret in production.')
-  }
 
   const ctx = await createAppContext(config)
 

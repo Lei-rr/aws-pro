@@ -30,10 +30,3 @@ export const toast = {
     sonner.loading(title, opts({ description, duration: Infinity })),
   dismiss: (id?: string | number) => sonner.dismiss(id),
 }
-
-export type ToastItem = {
-  id: number | string
-  title: string
-  description?: string
-  variant?: 'default' | 'destructive' | 'success'
-}

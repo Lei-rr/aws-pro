@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { Plus, RefreshCw, EllipsisVertical } from '@lucide/vue'
 import { PageHeader } from '@/shared/ui/page-header'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableLoading } from '@/shared/ui/table'
+import { TablePagination } from '@/shared/ui/pagination'
 import { AppDialog } from '@/shared/ui/dialog'
 import { Field, FieldGroup, FieldLabel } from '@/shared/ui/field'
 import {
@@ -19,6 +20,7 @@ import { apiList, apiObject } from '@/shared/api/http'
 import { toast } from '@/shared/lib/toast'
 import { errorMessage } from '@/shared/lib/errors'
 import { useListPage } from '@/shared/lib/use-list-page'
+import { useLocalPagination } from '@/shared/lib/use-local-pagination'
 import { confirmDelete } from '@/shared/ui/confirm'
 import type { Account } from '@/shared/types'
 
@@ -29,15 +31,18 @@ const accounts = ref<Account[]>([])
 const tableKey = ref(0)
 const dialogOpen = ref(false)
 
-const { loading, refreshing, runLoad, onRefresh, fail } = useListPage({
+const { loading, refreshing, pageSize, runLoad, onRefresh, onPageSizeChange, fail } = useListPage({
   pageSizeScope: 'aws-accounts',
-  load: async () => {
+  load: async (options = {}) => {
     try {
       const response = await accountApi.list()
+      if (options.isLatest && !options.isLatest()) return false
       setAccounts(apiList<Account>(response))
     } catch (e) {
+      if (options.isLatest && !options.isLatest()) return false
       setAccounts([])
       fail(e)
+      return false
     }
   },
 })
@@ -50,6 +55,8 @@ const filtered = computed(() => {
     [a.id, a.access_key, a.remark].some((v) => String(v || '').toLowerCase().includes(kw)),
   )
 })
+const { page, total, pagedItems: pagedAccounts, resetPage } = useLocalPagination(filtered, pageSize)
+watch(keyword, resetPage)
 
 function setAccounts(list: Account[]) {
   accounts.value = Array.isArray(list) ? list.map((row) => ({ ...row })) : []
@@ -87,10 +94,10 @@ async function save() {
   }
   saving.value = true
   try {
-    const payload: Record<string, unknown> = { ...form }
+    const payload: Partial<Account> & { original_id?: string } = { ...form }
     if (payload.original_id && !payload.secret_key) delete payload.secret_key
-    const response = await accountApi.save(payload as any)
-    const saved = apiObject<Account>(response, null as any)
+    const response = await accountApi.save(payload)
+    const saved = apiObject<Account>(response, { id: '', access_key: '' })
     if (form.original_id) {
       setAccounts(
         accounts.value.map((row) => {
@@ -115,7 +122,6 @@ async function save() {
     dialogOpen.value = false
     clearAccountsCache()
     window.dispatchEvent(new CustomEvent('accounts-updated'))
-    await runLoad()
   } catch (e) {
     toast.error(errorMessage(e, '服务商保存失败'))
   } finally {
@@ -133,7 +139,6 @@ async function remove(row: Account) {
     toast.success('服务商已删除')
     clearAccountsCache()
     window.dispatchEvent(new CustomEvent('accounts-updated'))
-    await runLoad()
   } catch (e) {
     toast.error(errorMessage(e, '服务商删除失败'))
   } finally {
@@ -176,7 +181,7 @@ onMounted(() => runLoad())
           <TableRow v-if="!filtered.length && !loading">
             <TableCell colspan="5" class="text-muted-foreground py-10 text-center">暂无服务商</TableCell>
           </TableRow>
-          <TableRow v-for="record in filtered" :key="record.id">
+          <TableRow v-for="record in pagedAccounts" :key="record.id">
             <TableCell class="px-4 font-medium">{{ record.id }}</TableCell>
             <TableCell class="max-w-[14rem] truncate" :title="record.access_key">{{ record.access_key || '—' }}</TableCell>
             <TableCell>{{ record.secret_key_masked || '—' }}</TableCell>
@@ -184,12 +189,12 @@ onMounted(() => runLoad())
             <TableCell>
               <DropdownMenu>
                 <DropdownMenuTrigger as-child>
-                  <Button variant="ghost" size="icon" class="size-8">
+                  <Button variant="ghost" size="icon" class="size-8" :disabled="deletingId === record.id">
                     <EllipsisVertical class="size-4" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem @click="openEdit(record)">编辑</DropdownMenuItem>
+                  <DropdownMenuItem :disabled="deletingId === record.id" @click="openEdit(record)">编辑</DropdownMenuItem>
                   <DropdownMenuItem variant="destructive" :disabled="deletingId === record.id" @click="remove(record)">
                     删除
                   </DropdownMenuItem>
@@ -199,6 +204,15 @@ onMounted(() => runLoad())
           </TableRow>
         </TableBody>
       </Table>
+      <TablePagination
+        class="mt-2"
+        :page="page"
+        :page-size="pageSize"
+        :total="total"
+        :disabled="loading"
+        @update:page="page = $event"
+        @update:page-size="onPageSizeChange"
+      />
     </TableLoading>
 
     <AppDialog

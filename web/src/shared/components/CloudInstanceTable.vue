@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from '@/shared/ui/select'
 import { regionName } from '@/shared/lib/format'
+import { loadPageSize, savePageSize } from '@/shared/lib/page-size'
 import type { AwsInstance } from '@/shared/types'
 
 const props = withDefaults(
@@ -28,8 +29,10 @@ const props = withDefaults(
     instances?: AwsInstance[]
     regions?: Record<string, string>
     packageKey: string
+    pageSizeScope: string
     packageLabel?: (row: AwsInstance) => string
     rowKey: (row: AwsInstance) => string
+    rowBusy?: (row: AwsInstance) => boolean
     stateLabels?: Record<string, string>
     emptyText?: string
   }>(),
@@ -38,6 +41,7 @@ const props = withDefaults(
     instances: () => [],
     regions: () => ({}),
     packageLabel: undefined,
+    rowBusy: () => false,
     stateLabels: () => ({}),
     emptyText: '暂无实例，请先选择账号和区域同步。',
   },
@@ -49,7 +53,7 @@ const emit = defineEmits<{
 }>()
 
 const page = ref(1)
-const pageSize = ref(20)
+const pageSize = ref(loadPageSize(props.pageSizeScope))
 const filterRegion = ref('all')
 const filterAccount = ref('all')
 const filterPackage = ref('all')
@@ -85,8 +89,12 @@ const paged = computed(() => {
   return filtered.value.slice(start, start + pageSize.value)
 })
 
-watch([filterRegion, filterAccount, filterPackage, filterState, filterStatic, pageSize], () => {
+watch([filterRegion, filterAccount, filterPackage, filterState, filterStatic], () => {
   page.value = 1
+})
+watch(pageSize, (next) => {
+  page.value = 1
+  savePageSize(props.pageSizeScope, next)
 })
 watch(
   () => props.instances,
@@ -202,6 +210,7 @@ function regionLabel(id?: string) {
                     variant="link"
                     size="sm"
                     class="text-destructive h-auto px-0"
+                    :disabled="rowBusy(record)"
                     @click="emit('operate', record, 'release_static_ip')"
                   >
                     释放
@@ -211,6 +220,7 @@ function regionLabel(id?: string) {
                     variant="link"
                     size="sm"
                     class="h-auto px-0"
+                    :disabled="rowBusy(record)"
                     @click="emit('operate', record, 'allocate_static_ip')"
                   >
                     获取
@@ -219,7 +229,13 @@ function regionLabel(id?: string) {
               </slot>
             </TableCell>
             <TableCell class="hidden md:table-cell">
-              <Button variant="link" size="sm" class="h-auto max-w-[8rem] truncate px-0" @click="emit('remark', record)">
+              <Button
+                variant="link"
+                size="sm"
+                class="h-auto max-w-[8rem] truncate px-0"
+                :disabled="rowBusy(record)"
+                @click="emit('remark', record)"
+              >
                 {{ record.remark || '添加' }}
               </Button>
             </TableCell>

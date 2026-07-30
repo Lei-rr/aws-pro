@@ -6,7 +6,7 @@
  * - supports { params }
  * - 401 → unauthorizedHandler
  */
-import type { ApiResponse, ListResponse } from '@/shared/types'
+import type { ApiResponse } from '@/shared/types'
 
 export type RequestError = Error & { code: string; details: unknown; status: number }
 
@@ -146,59 +146,7 @@ const http = {
     request<T>('PATCH', url, { ...(config || {}), data }),
 }
 
-export function withRefresh(options: Record<string, unknown> = {}) {
-  const { refresh, params = {} } = options
-  const queryParams = { ...(params as Record<string, unknown>) }
-
-  for (const [key, value] of Object.entries(queryParams)) {
-    if (key === 'refresh' || value === undefined || value === null || value === '') delete queryParams[key]
-  }
-
-  return { params: refresh ? { ...queryParams, refresh: 1 } : queryParams }
-}
-
-function isListResponse<T>(data: unknown): data is ListResponse<T> {
-  return typeof data === 'object' && data !== null && Array.isArray((data as ListResponse<T>).items)
-}
-
-export function unwrapItems<T>(response: ApiResponse<unknown>): ApiResponse<T> {
-  const data = response.data
-  if (Array.isArray(data)) {
-    return { ...response, data: data as T }
-  }
-  if (isListResponse<T>(data)) {
-    // Prefer pagination.total (DNSPod/EdgeOne) then meta.total
-    const listData = data as {
-      items: unknown[]
-      pagination?: Record<string, unknown>
-      meta?: Record<string, unknown>
-    }
-    const items = Array.isArray(listData.items) ? listData.items : []
-    const pagination = (listData.pagination && typeof listData.pagination === 'object'
-      ? listData.pagination
-      : {}) as Record<string, unknown>
-    const metaObj = (listData.meta && typeof listData.meta === 'object' ? listData.meta : {}) as Record<
-      string,
-      unknown
-    >
-    const meta = {
-      ...metaObj,
-      ...pagination,
-      total: Number(pagination.total ?? metaObj.total ?? items.length ?? 0),
-      count: Number(pagination.count ?? metaObj.count ?? items.length ?? 0),
-      offset: Number(pagination.offset ?? metaObj.offset ?? 0),
-      limit: Number(pagination.limit ?? metaObj.limit ?? metaObj.per_page ?? items.length ?? 0),
-      page: Number(metaObj.page ?? 0) || undefined,
-      per_page: Number(metaObj.per_page ?? pagination.limit ?? 0) || undefined,
-    }
-    return { ...response, data: items as T, meta }
-  }
-  return response as ApiResponse<T>
-}
-
-export { http }
 export default http
-
 
 /** Accept either envelope {code,data} or already-unwrapped payload */
 export function apiPayload<T = unknown>(response: unknown): T | null {

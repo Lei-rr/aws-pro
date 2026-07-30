@@ -115,7 +115,10 @@ export class Ec2Provider {
       try {
         await this.releaseStaticIpByClient(client, id)
       } catch (error) {
-        throw new Error(`Elastic IP cleanup failed; instance was not terminated: ${error instanceof Error ? error.message : String(error)}`)
+        throw Object.assign(
+          new Error(`Elastic IP cleanup failed; instance was not terminated: ${error instanceof Error ? error.message : String(error)}`),
+          { cause: error },
+        )
       }
       await withAwsRetry('terminate EC2 instance', () => client.send(new TerminateInstancesCommand({ InstanceIds: [id] })))
     })

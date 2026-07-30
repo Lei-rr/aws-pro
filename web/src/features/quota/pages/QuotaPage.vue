@@ -5,6 +5,7 @@ import { PageHeader } from '@/shared/ui/page-header'
 import { Button } from '@/shared/ui/button'
 import { Badge } from '@/shared/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableLoading } from '@/shared/ui/table'
+import { TablePagination } from '@/shared/ui/pagination'
 import AccountSelect from '@/shared/components/AccountSelect.vue'
 import RegionSelect from '@/shared/components/RegionSelect.vue'
 import { quotaApi } from '@/features/quota/api/quota'
@@ -12,6 +13,7 @@ import { apiList } from '@/shared/api/http'
 import { regionName } from '@/shared/lib/format'
 import { toast } from '@/shared/lib/toast'
 import { useListPage } from '@/shared/lib/use-list-page'
+import { useLocalPagination } from '@/shared/lib/use-local-pagination'
 
 type QuotaRow = { name: string; account_id?: string; region?: string; value?: unknown; error?: boolean }
 
@@ -19,37 +21,26 @@ const accountId = ref('')
 const region = ref('')
 const regions = ref<Record<string, string>>({})
 const items = ref<QuotaRow[]>([])
-const loadToken = ref(0)
 
-const { loading, refreshing, runLoad, onRefresh, fail } = useListPage({
+const { loading, refreshing, pageSize, runLoad, onRefresh, onPageSizeChange, fail } = useListPage({
   pageSizeScope: 'aws-quota',
   load: async (options = {}) => {
     if (!accountId.value || !region.value) return
-    const token = ++loadToken.value
     try {
       const response = await quotaApi.vcpu(
         { account_id: accountId.value, region: region.value },
         { refresh: options.refresh },
       )
-      if (token !== loadToken.value) return
+      if (options.isLatest && !options.isLatest()) return false
       items.value = apiList<QuotaRow>(response, ['items'])
     } catch (e) {
-      if (token !== loadToken.value) return
+      if (options.isLatest && !options.isLatest()) return false
       fail(e)
+      return false
     }
   },
 })
-
-async function loadFromCache() {
-  if (!accountId.value || !region.value) return
-  const token = ++loadToken.value
-  try {
-    const response = await quotaApi.vcpu({ account_id: accountId.value, region: region.value }, { cache_only: true })
-    if (token !== loadToken.value) return
-    const list = apiList<QuotaRow>(response, ['items'])
-    if (list.length) items.value = list
-  } catch { /* silent */ }
-}
+const { page, total, pagedItems, resetPage } = useLocalPagination(items, pageSize)
 
 async function query() {
   if (!accountId.value || !region.value) {
@@ -60,12 +51,13 @@ async function query() {
 }
 
 watch([accountId, region], () => {
+  resetPage()
   items.value = []
-  if (accountId.value && region.value) void loadFromCache()
+  if (accountId.value && region.value) void runLoad()
 })
 
 onMounted(() => {
-  if (accountId.value && region.value) void loadFromCache()
+  if (accountId.value && region.value) void runLoad()
 })
 </script>
 
@@ -96,7 +88,7 @@ onMounted(() => {
               请选择账号和区域后点击刷新按钮查询 vCPU 配额。
             </TableCell>
           </TableRow>
-          <TableRow v-for="record in items" :key="`${record.account_id}:${record.region}:${record.name}`">
+          <TableRow v-for="record in pagedItems" :key="`${record.account_id}:${record.region}:${record.name}`">
             <TableCell class="px-4 font-medium">{{ record.name }}</TableCell>
             <TableCell>{{ record.account_id }}</TableCell>
             <TableCell>{{ regionName(regions, record.region) }}</TableCell>
@@ -108,6 +100,15 @@ onMounted(() => {
           </TableRow>
         </TableBody>
       </Table>
+      <TablePagination
+        class="mt-2"
+        :page="page"
+        :page-size="pageSize"
+        :total="total"
+        :disabled="loading"
+        @update:page="page = $event"
+        @update:page-size="onPageSizeChange"
+      />
     </TableLoading>
   </div>
 </template>

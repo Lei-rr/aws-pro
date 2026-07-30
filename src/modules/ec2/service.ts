@@ -80,7 +80,16 @@ export class Ec2Service {
     region = v.region(region)
     await this.provider.createInstance(account, region, this.normalizeCreate(data))
     invalidateAwsCache(this.tags(account.id))
-    return this.sync(account.id, region)
+    try {
+      return await this.sync(account.id, region)
+    } catch (error) {
+      return {
+        created: true,
+        account_id: account.id,
+        region,
+        warnings: [{ code: 'post_create_sync_failed', message: error instanceof Error ? error.message : String(error) }],
+      }
+    }
   }
 
   async runAction(accountId: string, region: string, instanceId: string, input: Record<string, unknown>) {

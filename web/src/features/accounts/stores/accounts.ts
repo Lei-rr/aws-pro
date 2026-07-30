@@ -4,6 +4,7 @@ import { apiList } from '@/shared/api/http'
 import type { Account } from '@/shared/types'
 
 let accountsPromise: Promise<Account[]> | null = null
+let accountsRequestToken = 0
 
 export const useAccountStore = defineStore('accounts', {
   state: () => ({
@@ -15,36 +16,47 @@ export const useAccountStore = defineStore('accounts', {
     async load(options: { refresh?: boolean } = {}) {
       if (options.refresh) {
         accountsPromise = null
-        this.accounts = null
+        accountsRequestToken += 1
       }
-      if (this.accounts) return this.accounts
+      if (!options.refresh && this.accounts) return this.accounts
       if (!accountsPromise) {
+        const token = ++accountsRequestToken
         this.loading = true
         this.error = null
-        accountsPromise = accountApi
+        const promise = accountApi
           .list()
           .then((response) => {
+            if (token !== accountsRequestToken) return this.accounts || []
             this.accounts = apiList<Account>(response)
             return this.accounts
           })
           .catch((error) => {
+            if (token !== accountsRequestToken) return this.accounts || []
             this.error = error
             throw error
           })
           .finally(() => {
-            accountsPromise = null
+            if (token !== accountsRequestToken) return
+            if (accountsPromise === promise) accountsPromise = null
             this.loading = false
           })
+        accountsPromise = promise
       }
       return accountsPromise
     },
     clear() {
       accountsPromise = null
+      accountsRequestToken += 1
       this.accounts = null
       this.error = null
+      this.loading = false
     },
     setLocal(list: Account[]) {
+      accountsPromise = null
+      accountsRequestToken += 1
       this.accounts = list
+      this.error = null
+      this.loading = false
     },
   },
 })

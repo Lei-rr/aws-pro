@@ -1,4 +1,5 @@
 import { ApiError } from '../../lib/http/api-error.js'
+import { awsAccountTags, invalidateAwsCache } from '../../lib/cache/aws-cache.js'
 import { maskSecret } from '../../lib/utils/secret-masker.js'
 import * as v from '../../lib/utils/aws-validator.js'
 import type { AwsAccount, PublicAwsAccount } from '../../types/aws.js'
@@ -7,6 +8,8 @@ import { LightsailInstanceRepository } from '../lightsail/repository.js'
 import { Ec2InstanceRepository } from '../ec2/repository.js'
 
 export class AccountService {
+  private mutationChain: Promise<void> = Promise.resolve()
+
   constructor(
     private readonly accounts: AccountRepository,
     private readonly lightsail: LightsailInstanceRepository,
@@ -28,43 +31,104 @@ export class AccountService {
   }
 
   async create(body: Record<string, unknown>): Promise<PublicAwsAccount> {
+    return this.serialMutation(() => this.createAccount(body))
+  }
+
+  private async createAccount(body: Record<string, unknown>): Promise<PublicAwsAccount> {
     v.required(body, ['id', 'access_key', 'secret_key'])
     const id = v.accountId(String(body.id))
-    if (await this.accounts.find(id)) throw new ApiError('account_already_exists', 'Account already exists', 409, { id })
-    const account = this.normalize(body, id)
-    const all = await this.accounts.all()
-    all.push(account)
-    await this.accounts.saveAll(all)
+    const account = await this.accounts.create(this.normalize(body, id))
+    this.invalidateAccountCaches(account.id)
     return this.publicAccount(account)
   }
 
   async update(id: string, body: Record<string, unknown>): Promise<PublicAwsAccount> {
+    return this.serialMutation(() => this.updateAccount(id, body))
+  }
+
+  private async updateAccount(id: string, body: Record<string, unknown>): Promise<PublicAwsAccount> {
     const existing = await this.requireAccount(id)
     const merged = { ...body }
     if (merged.secret_key === undefined || String(merged.secret_key).trim() === '') {
       merged.secret_key = existing.secret_key
     }
-    const account = this.normalize(merged, id)
-    const newId = account.id
-    if (newId !== id && (await this.accounts.find(newId))) {
+    const normalized = this.normalize(merged, id)
+    if (normalized.id === id) {
+      const account = await this.accounts.replace(id, normalized)
+      this.invalidateAccountCaches(id)
+      return this.publicAccount(account)
+    }
+
+    const newId = normalized.id
+    if (await this.accounts.find(newId)) {
       throw new ApiError('account_already_exists', 'Account already exists', 409, { id: newId })
     }
-    const all = (await this.accounts.all()).filter((a) => a.id !== id)
-    all.push(account)
-    await this.accounts.saveAll(all)
-    if (newId !== id) {
+    const lightsailSnapshot = await this.lightsail.itemsByAccount(id)
+    const ec2Snapshot = await this.ec2.itemsByAccount(id)
+    const targetLightsailSnapshot = await this.lightsail.itemsByAccount(newId)
+    const targetEc2Snapshot = await this.ec2.itemsByAccount(newId)
+    try {
       await this.lightsail.renameAccount(id, newId)
       await this.ec2.renameAccount(id, newId)
+      const account = await this.accounts.replace(id, normalized)
+      this.invalidateAccountCaches(id, newId)
+      return this.publicAccount(account)
+    } catch (error) {
+      await Promise.allSettled([
+        this.lightsail.replaceAccount(newId, targetLightsailSnapshot),
+        this.ec2.replaceAccount(newId, targetEc2Snapshot),
+      ])
+      await Promise.allSettled([
+        this.lightsail.replaceAccount(id, lightsailSnapshot),
+        this.ec2.replaceAccount(id, ec2Snapshot),
+      ])
+      this.invalidateAccountCaches(id, newId)
+      throw error
     }
-    return this.publicAccount(account)
   }
 
   async delete(id: string): Promise<void> {
+    await this.serialMutation(() => this.deleteAccount(id))
+  }
+
+  private async deleteAccount(id: string): Promise<void> {
+    id = v.accountId(id)
     await this.requireAccount(id)
-    const all = (await this.accounts.all()).filter((a) => a.id !== id)
-    await this.accounts.saveAll(all)
-    await this.lightsail.deleteByAccount(id)
-    await this.ec2.deleteByAccount(id)
+    const lightsailSnapshot = await this.lightsail.itemsByAccount(id)
+    const ec2Snapshot = await this.ec2.itemsByAccount(id)
+    try {
+      await this.lightsail.deleteByAccount(id)
+      await this.ec2.deleteByAccount(id)
+      await this.accounts.delete(id)
+      this.invalidateAccountCaches(id)
+    } catch (error) {
+      await Promise.allSettled([
+        this.lightsail.replaceAccount(id, lightsailSnapshot),
+        this.ec2.replaceAccount(id, ec2Snapshot),
+      ])
+      this.invalidateAccountCaches(id)
+      throw error
+    }
+  }
+
+  private serialMutation<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.mutationChain.then(operation, operation)
+    this.mutationChain = result.then(
+      () => undefined,
+      () => undefined,
+    )
+    return result
+  }
+
+  private invalidateAccountCaches(...accountIds: string[]): void {
+    const tags = new Set<string>(['lightsail', 'ec2'])
+    for (const accountId of accountIds) {
+      if (!accountId) continue
+      for (const tag of awsAccountTags(accountId)) tags.add(tag)
+      tags.add(`lightsail:${accountId}`)
+      tags.add(`ec2:${accountId}`)
+    }
+    invalidateAwsCache([...tags])
   }
 
   private normalize(data: Record<string, unknown>, fallbackId: string): AwsAccount {

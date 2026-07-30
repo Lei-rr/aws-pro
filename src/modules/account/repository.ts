@@ -1,3 +1,4 @@
+import { ApiError } from '../../lib/http/api-error.js'
 import { JsonStore } from '../../lib/storage/json-store.js'
 import type { AwsAccount } from '../../types/aws.js'
 
@@ -8,31 +9,67 @@ export class AccountRepository {
 
   async all(): Promise<AwsAccount[]> {
     const data = await this.store.read()
-    return (data.items ?? []).map((row) => ({
+    return (data.items ?? []).map((row) => this.present(row))
+  }
+
+  async find(id: string): Promise<AwsAccount | null> {
+    return (await this.all()).find((account) => account.id === id) ?? null
+  }
+
+  async create(account: AwsAccount): Promise<AwsAccount> {
+    const now = Date.now()
+    let created!: AwsAccount
+    await this.store.transaction((current) => {
+      const items = current.items ?? []
+      if (items.some((item) => item.id === account.id)) {
+        throw new ApiError('account_already_exists', 'Account already exists', 409, { id: account.id })
+      }
+      created = { ...account, created_at: now, updated_at: now }
+      return { next: { ...current, items: [...items, created] } }
+    })
+    return this.present(created)
+  }
+
+  async replace(id: string, account: AwsAccount): Promise<AwsAccount> {
+    const now = Date.now()
+    let updated: AwsAccount | null = null
+    await this.store.transaction((current) => {
+      const items = current.items ?? []
+      const index = items.findIndex((item) => item.id === id)
+      if (index === -1) throw new ApiError('account_not_found', 'Account not found', 404, { id })
+      if (account.id !== id && items.some((item) => item.id === account.id)) {
+        throw new ApiError('account_already_exists', 'Account already exists', 409, { id: account.id })
+      }
+      updated = {
+        ...account,
+        created_at: items[index]?.created_at ?? now,
+        updated_at: now,
+      }
+      const next = [...items]
+      next[index] = updated
+      return { next: { ...current, items: next } }
+    })
+    return this.present(updated!)
+  }
+
+  async delete(id: string): Promise<void> {
+    await this.store.transaction((current) => {
+      const items = current.items ?? []
+      if (!items.some((item) => item.id === id)) {
+        throw new ApiError('account_not_found', 'Account not found', 404, { id })
+      }
+      return { next: { ...current, items: items.filter((item) => item.id !== id) } }
+    })
+  }
+
+  private present(row: AwsAccount): AwsAccount {
+    return {
       id: String(row.id ?? ''),
       access_key: String(row.access_key ?? ''),
       secret_key: String(row.secret_key ?? ''),
       remark: String(row.remark ?? ''),
       created_at: row.created_at,
       updated_at: row.updated_at,
-    }))
-  }
-
-  async find(id: string): Promise<AwsAccount | null> {
-    return (await this.all()).find((a) => a.id === id) ?? null
-  }
-
-  async saveAll(accounts: AwsAccount[]): Promise<void> {
-    const now = Date.now()
-    const items = accounts.map((account, index) => ({
-      id: account.id,
-      access_key: account.access_key,
-      secret_key: account.secret_key,
-      remark: account.remark ?? '',
-      sort_order: index,
-      created_at: account.created_at ?? now,
-      updated_at: now,
-    }))
-    await this.store.transaction((current) => ({ next: { ...current, items } }))
+    }
   }
 }

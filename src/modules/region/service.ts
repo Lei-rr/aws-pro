@@ -32,7 +32,7 @@ export class RegionService {
       tags: awsAccountTags(accountId, 'regions'),
       ttlMs: CacheTtl.awsLookup,
       mode,
-      emptyOnMiss: [] as any[],
+      emptyOnMiss: [] as Array<{ account_id: string; region: string; status: string }>,
       loader: () => this.provider.regions(account),
     })
 

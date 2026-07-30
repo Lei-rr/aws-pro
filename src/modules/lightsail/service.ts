@@ -4,7 +4,7 @@ import { CacheTtl, invalidateAwsCache, withAwsCache } from '../../lib/cache/aws-
 import * as v from '../../lib/utils/aws-validator.js'
 import type { LightsailInstance } from '../../types/aws.js'
 import { LightsailProvider } from '../../lib/aws/providers/lightsail-provider.js'
-import { LightsailBundleGateway } from '../../lib/aws/providers/lightsail-bundle-gateway.js'
+import { LightsailBundleGateway, type LightsailBundleMeta } from '../../lib/aws/providers/lightsail-bundle-gateway.js'
 import { LightsailInstanceRepository } from './repository.js'
 import { AccountService } from '../account/service.js'
 
@@ -45,11 +45,11 @@ export class LightsailService {
     for (const item of await this.instances.all()) {
       remarks.set(`${item.account_id}|${item.region}|${item.name}`, item.remark ?? '')
     }
-    const bundleSpecs: Record<string, any> = {}
-    const warnings: any[] = []
+    const bundleSpecs: Record<string, LightsailBundleMeta['specs']> = {}
+    const warnings: Array<{ code: string; message: string }> = []
     try {
       const all = await this.bundles.bundles(account, region)
-      for (const [id, meta] of Object.entries(all)) bundleSpecs[id] = (meta as any).specs ?? {}
+      for (const [id, meta] of Object.entries(all)) bundleSpecs[id] = meta.specs
     } catch {
       warnings.push({ code: 'bundle_specs_unavailable', message: '套餐规格暂未获取，实例同步已继续' })
     }
@@ -72,10 +72,10 @@ export class LightsailService {
     const zones = await this.provider.availabilityZones(account, region)
     const bundleMap = await this.bundles.bundles(account, region)
     const labels: Record<string, string> = {}
-    const items: any[] = []
+    const items: Array<{ id: string } & LightsailBundleMeta> = []
     for (const [id, meta] of Object.entries(bundleMap)) {
-      labels[id] = (meta as any).label
-      items.push({ id, ...(meta as any) })
+      labels[id] = meta.label
+      items.push({ id, ...meta })
     }
     return { zones, bundles: labels, bundle_items: items }
   }
@@ -86,7 +86,16 @@ export class LightsailService {
     const normalized = this.normalizeCreate(data)
     await this.provider.createInstance(account, region, normalized)
     invalidateAwsCache(this.tags(account.id))
-    return this.sync(account.id, region)
+    try {
+      return await this.sync(account.id, region)
+    } catch (error) {
+      return {
+        created: true,
+        account_id: account.id,
+        region,
+        warnings: [{ code: 'post_create_sync_failed', message: error instanceof Error ? error.message : String(error) }],
+      }
+    }
   }
 
   async updateRemark(accountId: string, region: string, instanceName: string, remark: string) {

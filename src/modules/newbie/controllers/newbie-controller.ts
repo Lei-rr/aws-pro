@@ -1,6 +1,6 @@
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { success } from '../../../lib/http/api-response.js'
-import { bodyRecord } from '../../../lib/utils/request-parse.js'
+import { bodyRecord, queryInt, queryRecord } from '../../../lib/utils/request-parse.js'
 
 export async function newbieStore(request: FastifyRequest, reply: FastifyReply) {
   const body = bodyRecord(request)
@@ -9,6 +9,10 @@ export async function newbieStore(request: FastifyRequest, reply: FastifyReply) 
 
 export async function newbieActive(request: FastifyRequest, reply: FastifyReply) {
   return reply.send(success(await request.server.ctx.newbieTaskService.active()))
+}
+
+export async function newbieRecent(request: FastifyRequest, reply: FastifyReply) {
+  return reply.send(success(await request.server.ctx.newbieTaskService.recent()))
 }
 
 export async function newbieShow(request: FastifyRequest<{ Params: { task: string } }>, reply: FastifyReply) {
@@ -33,15 +37,16 @@ export async function newbieStream(request: FastifyRequest<{ Params: { task: str
     'X-Accel-Buffering': 'no',
   })
 
-  const write = (message: string) => {
+  const afterSeq = queryInt(queryRecord(request), 'after_seq', 0, 0, Number.MAX_SAFE_INTEGER)
+  const write = (message: string, seq: number) => {
     if (ac.signal.aborted || reply.raw.writableEnded) return
-    reply.raw.write(`data: ${String(message).replace(/\n/g, ' ')}\n\n`)
+    reply.raw.write(`id: ${seq}\ndata: ${String(message).replace(/\n/g, ' ')}\n\n`)
   }
 
   try {
-    await request.server.ctx.newbieTaskService.streamLogs(request.params.task, write, { signal: ac.signal })
+    await request.server.ctx.newbieTaskService.streamLogs(request.params.task, write, { signal: ac.signal, afterSeq })
   } catch (error) {
-    write(`任务失败：${error instanceof Error ? error.message : String(error)}`)
+    write(`任务失败：${error instanceof Error ? error.message : String(error)}`, afterSeq + 1)
   } finally {
     request.raw.off('close', onClose)
     if (!reply.raw.writableEnded) reply.raw.end()

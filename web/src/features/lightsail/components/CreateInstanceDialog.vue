@@ -115,13 +115,14 @@ async function submit() {
   }
   creating.value = true
   try {
-    await lightsailApi.create({
+    const response = apiObject(await lightsailApi.create({
       ...form.value,
       account_id: props.accountId,
       region: props.region,
-    })
+    })) as { warnings?: Array<{ message?: string }> }
     open.value = false
     toast.success('创建命令已提交')
+    for (const warning of response.warnings || []) toast.warning(warning.message || '创建成功，但列表同步失败')
     emit('created')
   } catch (e) {
     toast.error(errorMessage(e, '创建失败'))

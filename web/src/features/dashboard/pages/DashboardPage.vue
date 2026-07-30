@@ -11,8 +11,6 @@ import { lightsailApi } from '@/features/lightsail/api/lightsail'
 import { ec2Api } from '@/features/ec2/api/ec2'
 import { apiList } from '@/shared/api/http'
 import { regionName } from '@/shared/lib/format'
-import { toast } from '@/shared/lib/toast'
-import { errorMessage } from '@/shared/lib/errors'
 import { useListPage } from '@/shared/lib/use-list-page'
 import type { AwsInstance } from '@/shared/types'
 
@@ -23,7 +21,7 @@ const configStore = useConfigStore()
 
 const { loading, refreshing, runLoad, onRefresh, fail } = useListPage({
   pageSizeScope: 'aws-dashboard',
-  load: async () => {
+  load: async (options = {}) => {
     try {
       const [, , ls, ec2] = await Promise.all([
         loadAccounts({ refresh: true }),
@@ -31,12 +29,15 @@ const { loading, refreshing, runLoad, onRefresh, fail } = useListPage({
         lightsailApi.instances(),
         ec2Api.instances(),
       ])
+      if (options.isLatest && !options.isLatest()) return false
       lightsailInstances.value = apiList<AwsInstance>(ls, ['items'])
       ec2Instances.value = apiList<AwsInstance>(ec2, ['items'])
     } catch (e) {
+      if (options.isLatest && !options.isLatest()) return false
       lightsailInstances.value = []
       ec2Instances.value = []
       fail(e)
+      return false
     }
   },
 })

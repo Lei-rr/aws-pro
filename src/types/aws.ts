@@ -52,7 +52,17 @@ export interface NewbieTask {
   message?: string
   /** Persisted execution logs for poll / read-only SSE. */
   logs?: string[]
+  /** Sequence of logs[0] and the next sequence to allocate. */
+  log_start_seq?: number
+  next_log_seq?: number
   operation_ids?: Record<string, string>
+  /** Durable resource checkpoints used for idempotent restart cleanup. */
+  resources?: Record<string, string>
+  phase?: 'pending' | 'creating' | 'cleaning' | 'done'
+  current_step?: string
+  progress?: number
+  worker_token?: string
+  worker_lease_until?: number
   created_at: number
   updated_at: number
 }

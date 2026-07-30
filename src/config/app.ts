@@ -23,7 +23,7 @@ const DEFAULT_CONFIG: AppConfig = {
   dataDir: path.resolve('data'),
   cacheMaxEntries: 1000,
   cacheSweepIntervalMs: 10 * 60 * 1000,
-  sessionSecret: 'aws-pro-secure-session',
+  sessionSecret: '',
   sessionCookieName: 'aws_pro_session',
   sessionMaxAgeSeconds: 7 * 24 * 60 * 60,
   cookieSecure: false,
@@ -32,6 +32,17 @@ const DEFAULT_CONFIG: AppConfig = {
   httpTimeoutMs: 30000,
 }
 
+function envFlag(value: string | undefined, fallback: boolean): boolean {
+  if (value == null || value.trim() === '') return fallback
+  return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase())
+}
+
 export function loadAppConfig(overrides: Partial<AppConfig> = {}): AppConfig {
-  return { ...DEFAULT_CONFIG, ...overrides }
+  const env = process.env
+  return {
+    ...DEFAULT_CONFIG,
+    sessionSecret: String(env.SESSION_SECRET ?? '').trim(),
+    cookieSecure: envFlag(env.COOKIE_SECURE, DEFAULT_CONFIG.cookieSecure),
+    ...overrides,
+  }
 }

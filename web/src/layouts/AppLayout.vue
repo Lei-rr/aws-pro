@@ -105,7 +105,7 @@ function toggleDark() {
             <Moon class="size-4" />
           </Button>
 
-          <!-- 右上角账户下拉：显示用户名 + 账号管理 + 退出（对齐 dns-pro） -->
+          <!-- 右上角账户下拉：显示用户名 + 账号管理 + 退出 -->
           <DropdownMenu>
             <DropdownMenuTrigger as-child>
               <Button variant="ghost" class="h-9 gap-1.5 px-3 text-[15px]">

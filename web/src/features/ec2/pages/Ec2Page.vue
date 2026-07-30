@@ -26,20 +26,19 @@ const actionLoadingLabel = ref('')
 const accountId = ref('')
 const region = ref('')
 const instances = ref<AwsInstance[]>([])
-const loadToken = ref(0)
 
-const { loading, refreshing, runLoad, onRefresh, fail } = useListPage({
+const { loading, runLoad, fail } = useListPage({
   pageSizeScope: 'aws-ec2',
-  load: async () => {
-    const token = ++loadToken.value
+  load: async (options = {}) => {
     try {
       const response = await ec2Api.instances()
-      if (token !== loadToken.value) return
+      if (options.isLatest && !options.isLatest()) return false
       instances.value = apiList<AwsInstance>(response, ['items'])
     } catch (e) {
-      if (token !== loadToken.value) return
+      if (options.isLatest && !options.isLatest()) return false
       instances.value = []
       fail(e)
+      return false
     }
   },
 })
@@ -94,11 +93,6 @@ async function sync() {
 }
 
 async function onCreated() {
-  try {
-    await syncScope(accountId.value, region.value)
-  } catch (e) {
-    toast.warning(errorMessage(e, '创建成功，但同步列表失败'))
-  }
   await runLoad()
 }
 
@@ -139,6 +133,15 @@ async function operate(row: AwsInstance, action: string) {
   await runAction(row, action)
 }
 
+async function syncAfterAction(accountId: string, targetRegion: string) {
+  try {
+    await syncScope(accountId, targetRegion)
+    await runLoad()
+  } catch (error) {
+    toast.warning(errorMessage(error, '操作已提交，但同步列表失败'))
+  }
+}
+
 async function runAction(row: AwsInstance, action: string) {
   const key = `${row.id}:${action}`
   if (actionLoadingKey.value) {
@@ -149,7 +152,7 @@ async function runAction(row: AwsInstance, action: string) {
   const target = String(row.name || row.id || '')
   actionLoadingKey.value = key
   actionLoadingLabel.value = `${name}中`
-  toast.loading(`正在${name} ${target}…`)
+  const loadingToastId = toast.loading(`正在${name} ${target}…`)
   try {
     const response = await ec2Api.action({
       instance_id: row.id,
@@ -158,12 +161,11 @@ async function runAction(row: AwsInstance, action: string) {
       action,
       confirm: action,
     })
-    toast.dismiss()
+    toast.dismiss(loadingToastId)
     toast.success((apiObject(response) as { message?: string }).message || `${name}已提交`)
-    await syncScope(String(row.account_id), String(row.region))
-    await runLoad()
+    await syncAfterAction(String(row.account_id), String(row.region))
   } catch (e) {
-    toast.dismiss()
+    toast.dismiss(loadingToastId)
     toast.error(errorMessage(e, `${name}失败`))
   } finally {
     actionLoadingKey.value = ''
@@ -213,7 +215,7 @@ async function saveRemark() {
 async function copyInstanceList() {
   const lines = instances.value
     .map((row) => {
-      const ip = (row as any).public_ipv4 || row.public_ip || row.static_ip || ''
+      const ip = row.public_ipv4 || row.public_ip || row.static_ip || ''
       return ip
         ? `${ip} | root | pass | ${regionName(regions.value, row.region)} | ${row.account_id}`
         : ''
@@ -268,7 +270,9 @@ onMounted(async () => {
       :instances="instances"
       :regions="regions"
       package-key="instance_type"
+      page-size-scope="aws-ec2"
       :row-key="rowKey"
+      :row-busy="isRowActionBusy"
       :state-labels="{ running: '运行中', stopped: '已停止', pending: '处理中', terminated: '已终止' }"
       empty-text="暂无 EC2 实例，请选择账号和区域后同步。"
       @operate="operate"
@@ -298,6 +302,7 @@ onMounted(async () => {
       v-model:open="remarkOpen"
       :saving="remarkSaving"
       :form="remarkForm"
+      @update:remark="remarkForm.remark = $event"
       @save="saveRemark"
     />
   </div>

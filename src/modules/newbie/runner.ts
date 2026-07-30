@@ -1,6 +1,6 @@
 
 import * as crypto from 'node:crypto'
-import { CreateBudgetCommand, DescribeBudgetCommand } from '@aws-sdk/client-budgets'
+import { CreateBudgetCommand, DeleteBudgetCommand, DescribeBudgetCommand } from '@aws-sdk/client-budgets'
 import {
   DescribeImagesCommand,
   DescribeInstancesCommand,
@@ -21,11 +21,18 @@ import {
 import { GetCallerIdentityCommand } from '@aws-sdk/client-sts'
 import type { AwsAccount } from '../../types/aws.js'
 import { AwsClientFactory } from '../../lib/aws/client-factory.js'
-import { withAwsRetry } from '../../lib/aws/retry.js'
+import { isAwsErrorCode, withAwsRetry } from '../../lib/aws/retry.js'
 import { NewbieTaskCancelledException } from './cancelled.js'
 
 type LogFn = (message: string, ...args: any[]) => void
 type CancelFn = () => boolean | Promise<boolean>
+type RuntimePatch = {
+  resources?: Record<string, string>
+  phase?: 'pending' | 'creating' | 'cleaning' | 'done'
+  current_step?: string
+  progress?: number
+}
+type CheckpointFn = (patch: RuntimePatch) => void | Promise<void>
 
 const REGION = 'us-east-1'
 /** 状态/重试轮询间隔（用户约定 3s） */
@@ -54,7 +61,14 @@ export class NewbieTaskRunner {
     return STEPS[step] ?? step
   }
 
-  async run(account: AwsAccount, step: string, operationIds: Record<string, string>, log: LogFn, cancelled: CancelFn = async () => false) {
+  async run(
+    account: AwsAccount,
+    step: string,
+    operationIds: Record<string, string>,
+    log: LogFn,
+    cancelled: CancelFn = async () => false,
+    checkpoint: CheckpointFn = async () => undefined,
+  ) {
     // Local panel account id may be an email/alias. Budgets API requires the real 12-digit AWS AccountId.
     const accountId = await this.resolveAwsAccountId(account)
     log('====== 自动执行 AWS 新手任务 ======')
@@ -62,18 +76,66 @@ export class NewbieTaskRunner {
     log(fmt('执行范围：%s', [this.stepLabel(step)]))
 
     const steps: Array<[string, string, string, () => Promise<void>]> = [
-      ['budget', '任务 1/4', STEPS.budget, () => this.taskBudget(account, accountId, this.operationId(operationIds, 'budget'), log, cancelled)],
-      ['ec2', '任务 2/4', STEPS.ec2, () => this.taskEc2(account, this.operationId(operationIds, 'ec2'), log, cancelled)],
-      ['lambda', '任务 3/4', STEPS.lambda, () => this.taskLambda(account, this.operationId(operationIds, 'lambda'), log, cancelled)],
-      ['rds', '任务 4/4', STEPS.rds, () => this.taskRds(account, this.operationId(operationIds, 'rds'), log, cancelled)],
+      ['budget', '任务 1/4', STEPS.budget, () => this.taskBudget(account, accountId, this.operationId(operationIds, 'budget'), log, cancelled, checkpoint)],
+      ['ec2', '任务 2/4', STEPS.ec2, () => this.taskEc2(account, this.operationId(operationIds, 'ec2'), log, cancelled, checkpoint)],
+      ['lambda', '任务 3/4', STEPS.lambda, () => this.taskLambda(account, this.operationId(operationIds, 'lambda'), log, cancelled, checkpoint)],
+      ['rds', '任务 4/4', STEPS.rds, () => this.taskRds(account, this.operationId(operationIds, 'rds'), log, cancelled, checkpoint)],
     ]
 
-    for (const [key, index, title, callback] of steps) {
-      if (step !== 'all' && step !== key) continue
+    const selected = steps.filter(([key]) => step === 'all' || step === key)
+    for (let selectedIndex = 0; selectedIndex < selected.length; selectedIndex++) {
+      const [key, index, title, callback] = selected[selectedIndex]!
       await this.ensureNotCancelled(cancelled)
+      await checkpoint({ phase: 'creating', current_step: key, progress: Math.round((selectedIndex / selected.length) * 100) })
       await this.runStep(log, index, title, callback)
+      await checkpoint({ progress: Math.round(((selectedIndex + 1) / selected.length) * 100) })
     }
+    await checkpoint({ phase: 'done', current_step: '', progress: 100 })
     log('====== 已选择流程执行完毕 ======')
+  }
+
+  async cleanup(account: AwsAccount, resources: Record<string, string>, log: LogFn) {
+    const errors: unknown[] = []
+    const attempt = async (work: () => Promise<void>) => {
+      try {
+        await work()
+      } catch (error) {
+        errors.push(error)
+      }
+    }
+
+    if (resources.budget_name && resources.aws_account_id) {
+      await attempt(() => this.deleteBudget(this.clients.budgets(account), resources.aws_account_id!, resources.budget_name!, log))
+    }
+    if (resources.ec2_instance_id || resources.ec2_name) {
+      await attempt(async () => {
+        const ec2 = this.clients.ec2(account, REGION)
+        const id = resources.ec2_instance_id || (await this.reconcileEc2Instance(ec2, resources.ec2_name!, log))
+        if (id) await this.terminateEc2Instance(ec2, id, log)
+      })
+    }
+    if (resources.lambda_function_name || resources.lambda_role_name) {
+      await attempt(async () => {
+        if (resources.lambda_function_name) {
+          await this.deleteLambdaFunction(this.clients.lambda(account, REGION), resources.lambda_function_name, log)
+        }
+        if (resources.lambda_role_name) {
+          await this.sleep(POLL_MS)
+          await this.deleteIamRole(this.clients.iam(account), resources.lambda_role_name, log)
+        }
+      })
+    }
+    if (resources.rds_identifier) {
+      await attempt(async () => {
+        const rds = this.clients.rds(account, REGION)
+        if (!(await this.reconcileRdsInstance(rds, resources.rds_identifier!, log))) {
+          throw new Error(`RDS cleanup result is uncertain for ${resources.rds_identifier}; check the AWS console`)
+        }
+        await this.cleanupRds(rds, resources.rds_identifier!, log)
+      })
+    }
+
+    if (errors.length) throw Object.assign(new Error('Newbie resource recovery cleanup failed'), { errors })
   }
 
   private async runStep(log: LogFn, index: string, title: string, callback: () => Promise<void>) {
@@ -92,11 +154,18 @@ export class NewbieTaskRunner {
     }
   }
 
-  private async taskBudget(account: AwsAccount, accountId: string, operationId: string, log: LogFn, cancelled: CancelFn) {
+  private async taskBudget(
+    account: AwsAccount,
+    accountId: string,
+    operationId: string,
+    log: LogFn,
+    cancelled: CancelFn,
+    checkpoint: CheckpointFn,
+  ) {
     await this.ensureNotCancelled(cancelled)
     const name = `AutoBudget-${this.shortId(operationId, 12)}`
-    const email = `alert-${this.shortId(operationId, 8)}@gmail.com`
     const budgets = this.clients.budgets(account)
+    await checkpoint({ resources: { budget_name: name, aws_account_id: accountId }, phase: 'creating' })
     try {
       await withAwsRetry('create newbie budget', () =>
         budgets.send(
@@ -108,32 +177,31 @@ export class NewbieTaskRunner {
               TimeUnit: 'MONTHLY',
               BudgetLimit: { Amount: '10.0', Unit: 'USD' },
             },
-            NotificationsWithSubscribers: [
-              {
-                Notification: {
-                  NotificationType: 'ACTUAL',
-                  ComparisonOperator: 'GREATER_THAN',
-                  Threshold: 80,
-                },
-                Subscribers: [{ SubscriptionType: 'EMAIL', Address: email }],
-              },
-            ],
           }),
         ),
       )
     } catch (error) {
       if (!(await this.budgetExists(budgets, accountId, name))) throw error
-      log(fmt('预算 %s 已存在，跳过创建。', [name]))
-      return
+      log(fmt('预算 %s 已存在，继续清理。', [name]))
     }
-    log(fmt('预算 %s 创建成功，订阅邮箱：%s', [name, email]))
+    log(fmt('预算 %s 创建步骤达成', [name]))
+    await checkpoint({ phase: 'cleaning' })
+    await this.deleteBudget(budgets, accountId, name, log)
   }
 
-  private async taskEc2(account: AwsAccount, operationId: string, log: LogFn, cancelled: CancelFn) {
+  private async taskEc2(
+    account: AwsAccount,
+    operationId: string,
+    log: LogFn,
+    cancelled: CancelFn,
+    checkpoint: CheckpointFn,
+  ) {
     await this.ensureNotCancelled(cancelled)
     const client = this.clients.ec2(account, REGION)
     const ami = await this.latestAmazonLinuxAmi(client)
+    await this.ensureNotCancelled(cancelled)
     const name = `AutoEC2-${this.shortId(operationId, 12)}`
+    await checkpoint({ resources: { ec2_name: name }, phase: 'creating' })
     let id = ''
     try {
       try {
@@ -157,6 +225,7 @@ export class NewbieTaskRunner {
       }
       if (!id) id = await this.findEc2InstanceByName(client, name)
       if (!id) throw new Error('EC2 RunInstances returned empty instance id')
+      await checkpoint({ resources: { ec2_instance_id: id }, phase: 'cleaning' })
 
       // 产品约定：拿到 instance id = 启动任务达成，不等 running（pending 可能要几分钟）
       try {
@@ -167,16 +236,28 @@ export class NewbieTaskRunner {
       }
       log('EC2 启动任务达成')
     } finally {
-      if (id) await this.terminateEc2Instance(client, id, log)
+      if (!id) id = await this.reconcileEc2Instance(client, name, log)
+      if (id) {
+        await checkpoint({ resources: { ec2_instance_id: id }, phase: 'cleaning' })
+        await this.terminateEc2Instance(client, id, log)
+      }
     }
   }
 
-  private async taskLambda(account: AwsAccount, operationId: string, log: LogFn, cancelled: CancelFn) {
+  private async taskLambda(
+    account: AwsAccount,
+    operationId: string,
+    log: LogFn,
+    cancelled: CancelFn,
+    checkpoint: CheckpointFn,
+  ) {
     await this.ensureNotCancelled(cancelled)
     const iam = this.clients.iam(account)
     const lambda = this.clients.lambda(account, REGION)
     const roleName = `AutoLambdaRole-${this.shortId(operationId, 10)}`
     const functionName = `AutoFunc-${this.shortId(operationId, 10)}`
+    await checkpoint({ resources: { lambda_role_name: roleName, lambda_function_name: functionName }, phase: 'creating' })
+    let executionError: unknown
     try {
       const role = await this.createOrGetRole(iam, roleName)
       const roleArn = String((role as any)?.Role?.Arn ?? '')
@@ -195,22 +276,47 @@ export class NewbieTaskRunner {
         log(fmt('函数 %s 创建请求已成功（查询状态暂不可用，直接清理）', [functionName]))
       }
       log('Lambda 创建任务达成')
-    } finally {
-      await this.deleteLambdaFunction(lambda, functionName, log)
-      await this.sleep(POLL_MS)
-      try {
-        await this.deleteIamRole(iam, roleName, log)
-      } catch (error) {
-        log(fmt('IAM 角色 %s 删除失败，请到控制台确认：%s', [roleName, error instanceof Error ? error.message : String(error)]))
-      }
+    } catch (error) {
+      executionError = error
     }
+
+    const cleanupErrors: unknown[] = []
+    await checkpoint({ phase: 'cleaning' })
+    try {
+      await this.deleteLambdaFunction(lambda, functionName, log)
+    } catch (error) {
+      cleanupErrors.push(error)
+    }
+    await this.sleep(POLL_MS)
+    try {
+      await this.deleteIamRole(iam, roleName, log)
+    } catch (error) {
+      cleanupErrors.push(error)
+    }
+    if (cleanupErrors.length) {
+      if (executionError) {
+        Object.assign(executionError as object, { cleanupErrors })
+        throw executionError
+      }
+      throw Object.assign(new Error('Lambda resource cleanup failed'), {
+        errors: cleanupErrors,
+      })
+    }
+    if (executionError) throw executionError
   }
 
-  private async taskRds(account: AwsAccount, operationId: string, log: LogFn, cancelled: CancelFn) {
+  private async taskRds(
+    account: AwsAccount,
+    operationId: string,
+    log: LogFn,
+    cancelled: CancelFn,
+    checkpoint: CheckpointFn,
+  ) {
     await this.ensureNotCancelled(cancelled)
     const rds = this.clients.rds(account, REGION)
     const dbName = `db-${this.shortId(operationId, 12)}`
-    let created = false
+    await checkpoint({ resources: { rds_identifier: dbName }, phase: 'creating' })
+    let executionError: unknown
     try {
       try {
         const result = await withAwsRetry('create newbie RDS instance', () =>
@@ -220,9 +326,12 @@ export class NewbieTaskRunner {
               DBInstanceClass: 'db.t3.micro',
               Engine: 'mysql',
               MasterUsername: 'admin',
-              MasterUserPassword: 'Password123456',
+              MasterUserPassword: this.randomPassword(),
               AllocatedStorage: 20,
               BackupRetentionPeriod: 0,
+              PubliclyAccessible: false,
+              StorageEncrypted: true,
+              DeletionProtection: false,
             }),
           ),
         )
@@ -231,9 +340,7 @@ export class NewbieTaskRunner {
         if (!(await this.rdsExists(rds, dbName))) throw error
         log(fmt('数据库 %s 已存在，继续清理。', [dbName]))
       }
-      created = true
-      // 产品约定：CreateDBInstance 成功 / 实例已出现 = 任务达成。
-      // 不等 available（creating 可能 10+ 分钟），立刻进入清理。
+      await checkpoint({ phase: 'cleaning' })
       try {
         const status = await this.rdsStatus(rds, dbName)
         log(fmt('数据库 %s 创建请求已成功，当前状态：%s（不等 available，直接清理）', [dbName, status || 'unknown']))
@@ -241,13 +348,31 @@ export class NewbieTaskRunner {
         log(fmt('数据库 %s 创建请求已成功（查询状态暂不可用，直接清理）', [dbName]))
       }
       log('RDS 创建任务达成')
-    } finally {
-      if (created) await this.cleanupRds(rds, dbName, log)
+    } catch (error) {
+      executionError = error
     }
+
+    const visible = await this.reconcileRdsInstance(rds, dbName, log)
+    if (!visible) {
+      if (executionError) throw executionError
+      throw new Error(`RDS creation result is uncertain for ${dbName}; check the AWS console`)
+    }
+    await checkpoint({ phase: 'cleaning' })
+    try {
+      await this.cleanupRds(rds, dbName, log)
+    } catch (cleanupError) {
+      if (executionError) {
+        Object.assign(executionError as object, { cleanupError })
+        throw executionError
+      }
+      throw cleanupError
+    }
+    if (executionError) throw executionError
   }
 
   private async cleanupRds(rds: any, dbName: string, log: LogFn) {
     log(fmt('开始清理数据库 %s ...', [dbName]))
+    let lastDeleteError: unknown
     // creating 阶段 Delete 常被拒，短重试；deleting / 指令已接受即结束，绝不空等消失
     for (let i = 0; i < 8; i++) {
       try {
@@ -274,22 +399,31 @@ export class NewbieTaskRunner {
           return
         } catch (error) {
           const msg = error instanceof Error ? error.message : String(error)
-          // creating 时删不了：等几秒再试；试满仍失败则记日志结束（控制台可手删）
+          if (!isAwsErrorCode(error, ['InvalidDBInstanceState', 'InvalidDBInstanceStateFault'])) {
+            throw Object.assign(new Error(`RDS cleanup delete failed: ${msg}`), { cause: error })
+          }
+          lastDeleteError = error
           log(fmt('当前状态 %s 暂时不能删除（%s），稍后重试…', [status, msg]))
         }
-      } catch {
-        log(fmt('清理结果：RDS 数据库 %s 已不存在', [dbName]))
-        return
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error)
+        if (isAwsErrorCode(error, ['DBInstanceNotFound', 'DBInstanceNotFoundFault'])) {
+          log(fmt('清理结果：RDS 数据库 %s 已不存在', [dbName]))
+          return
+        }
+        throw Object.assign(new Error(`RDS cleanup status check failed: ${msg}`), { cause: error })
       }
       await this.sleep(POLL_MS)
     }
-    log(fmt('清理结果：RDS 数据库 %s 删除指令暂未发出（creating 中常见），请到控制台确认或稍后手删', [dbName]))
+    const message = `RDS cleanup failed: delete command was not accepted for ${dbName}`
+    log(fmt('清理结果：RDS 数据库 %s cleanup_failed：删除指令未被接受，请到控制台确认', [dbName]))
+    throw Object.assign(new Error(message), { cause: lastDeleteError })
   }
 
   private async createLambdaFunction(lambda: any, functionName: string, roleArn: string, log: LogFn, cancelled: CancelFn) {
     const input = {
       FunctionName: functionName,
-      Runtime: 'python3.9' as any,
+      Runtime: 'python3.13' as any,
       Role: roleArn,
       Handler: 'lambda_function.lambda_handler',
       Code: { ZipFile: this.lambdaZip() },
@@ -301,12 +435,16 @@ export class NewbieTaskRunner {
         await withAwsRetry('create newbie Lambda function', () => lambda.send(new CreateFunctionCommand(input)))
         return
       } catch (error) {
-        if (await this.lambdaFunctionExists(lambda, functionName)) {
+        if (isAwsErrorCode(error, ['ResourceConflictException']) && (await this.lambdaFunctionExists(lambda, functionName))) {
           log(fmt('函数 %s 已存在，视为创建成功。', [functionName]))
           return
         }
-        if (i === 14) throw error
-        log(fmt('函数创建暂未成功（IAM 传播中），%ss 后重试：%s', [String(POLL_MS / 1000), error instanceof Error ? error.message : String(error)]))
+        const message = error instanceof Error ? error.message : String(error)
+        const propagation =
+          isAwsErrorCode(error, ['InvalidParameterValueException']) &&
+          /role|assum|propagat|cannot be assumed/i.test(message)
+        if (!propagation || i === 14) throw error
+        log(fmt('函数创建暂未成功（IAM 传播中），%ss 后重试：%s', [String(POLL_MS / 1000), message]))
         await this.sleep(POLL_MS)
       }
     }
@@ -332,10 +470,12 @@ export class NewbieTaskRunner {
         ),
       )
     } catch (error) {
+      if (!isAwsErrorCode(error, ['EntityAlreadyExists', 'EntityAlreadyExistsException'])) throw error
       for (let i = 0; i < 5; i++) {
         try {
           return await withAwsRetry('get newbie IAM role', () => iam.send(new GetRoleCommand({ RoleName: roleName })))
-        } catch {
+        } catch (getError) {
+          if (!isAwsErrorCode(getError, ['NoSuchEntity', 'NoSuchEntityException']) || i === 4) throw getError
           await this.sleep(POLL_MS)
         }
       }
@@ -348,7 +488,9 @@ export class NewbieTaskRunner {
       await withAwsRetry('delete newbie IAM role', () => iam.send(new DeleteRoleCommand({ RoleName: roleName })), ['NoSuchEntity'])
       log(fmt('IAM 角色 %s 已删除', [roleName]))
     } catch (error) {
-      log(fmt('IAM 角色 %s 删除失败：%s', [roleName, error instanceof Error ? error.message : String(error)]))
+      const msg = error instanceof Error ? error.message : String(error)
+      log(fmt('清理结果：IAM 角色 %s cleanup_failed：%s', [roleName, msg]))
+      throw Object.assign(new Error(`IAM role cleanup failed: ${msg}`), { cause: error })
     }
   }
 
@@ -361,11 +503,12 @@ export class NewbieTaskRunner {
       log(fmt('清理结果：Lambda 函数 %s 删除指令已接受（视为清理完成）', [functionName]))
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
-      if (/ResourceNotFound|Function not found/i.test(msg)) {
+      if (isAwsErrorCode(error, ['ResourceNotFoundException'])) {
         log(fmt('清理结果：Lambda 函数 %s 已不存在', [functionName]))
         return
       }
       log(fmt('清理结果：Lambda 函数 %s cleanup_failed：%s', [functionName, msg]))
+      throw Object.assign(new Error(`Lambda cleanup failed: ${msg}`), { cause: error })
     }
   }
 
@@ -384,11 +527,12 @@ export class NewbieTaskRunner {
       )
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
-      if (/InvalidInstanceID|NotFound/i.test(msg)) {
+      if (isAwsErrorCode(error, ['InvalidInstanceID.NotFound'])) {
         log(fmt('清理结果：EC2 实例 %s 已不存在', [id]))
         return
       }
       log(fmt('清理结果：EC2 实例 %s cleanup_failed：%s', [id, msg]))
+      throw Object.assign(new Error(`EC2 cleanup failed: ${msg}`), { cause: error })
     }
   }
 
@@ -409,8 +553,36 @@ export class NewbieTaskRunner {
     return ami
   }
 
-  private async findEc2InstanceByName(client: any, name: string) {
-    for (let i = 0; i < 5; i++) {
+  private async reconcileEc2Instance(client: any, name: string, log: LogFn) {
+    for (let i = 0; i < 40; i++) {
+      const id = await this.findEc2InstanceByName(client, name, 1)
+      if (id) {
+        log(fmt('创建结果确认：发现实例 %s，继续终止清理。', [id]))
+        return id
+      }
+      if (i < 39) await this.sleep(POLL_MS)
+    }
+    log(fmt('创建结果仍不确定：未发现 EC2 实例 %s，请到控制台确认。', [name]))
+    return ''
+  }
+
+  private async reconcileRdsInstance(rds: any, dbName: string, log: LogFn) {
+    for (let i = 0; i < 40; i++) {
+      try {
+        await this.rdsStatus(rds, dbName)
+        log(fmt('创建结果确认：发现 RDS 数据库 %s，继续删除清理。', [dbName]))
+        return true
+      } catch (error) {
+        if (!isAwsErrorCode(error, ['DBInstanceNotFound', 'DBInstanceNotFoundFault'])) throw error
+      }
+      if (i < 39) await this.sleep(POLL_MS)
+    }
+    log(fmt('创建结果仍不确定：未发现 RDS 数据库 %s，请到控制台确认。', [dbName]))
+    return false
+  }
+
+  private async findEc2InstanceByName(client: any, name: string, attempts = 5) {
+    for (let i = 0; i < attempts; i++) {
       const result = await withAwsRetry('find newbie EC2 instance', () =>
         client.send(
           new DescribeInstancesCommand({
@@ -427,7 +599,7 @@ export class NewbieTaskRunner {
           if (id) return id
         }
       }
-      await this.sleep(POLL_MS)
+      if (i < attempts - 1) await this.sleep(POLL_MS)
     }
     return ''
   }
@@ -456,6 +628,25 @@ export class NewbieTaskRunner {
     return false
   }
 
+  private async deleteBudget(budgets: any, accountId: string, name: string, log: LogFn) {
+    try {
+      await withAwsRetry(
+        'delete newbie budget',
+        () => budgets.send(new DeleteBudgetCommand({ AccountId: accountId, BudgetName: name })),
+        ['NotFoundException'],
+      )
+      log(fmt('清理结果：预算 %s 删除指令已接受（视为清理完成）', [name]))
+    } catch (error) {
+      if (isAwsErrorCode(error, ['NotFoundException'])) {
+        log(fmt('清理结果：预算 %s 已不存在', [name]))
+        return
+      }
+      throw Object.assign(new Error(`Budget cleanup failed: ${error instanceof Error ? error.message : String(error)}`), {
+        cause: error,
+      })
+    }
+  }
+
   private async budgetExists(budgets: any, accountId: string, name: string) {
     for (let i = 0; i < 3; i++) {
       try {
@@ -471,15 +662,13 @@ export class NewbieTaskRunner {
   }
 
   private async lambdaFunctionExists(lambda: any, functionName: string) {
-    for (let i = 0; i < 5; i++) {
-      try {
-        await withAwsRetry('get newbie Lambda function', () => lambda.send(new GetFunctionCommand({ FunctionName: functionName })))
-        return true
-      } catch {
-        await this.sleep(POLL_MS)
-      }
+    try {
+      await withAwsRetry('get newbie Lambda function', () => lambda.send(new GetFunctionCommand({ FunctionName: functionName })))
+      return true
+    } catch (error) {
+      if (isAwsErrorCode(error, ['ResourceNotFoundException'])) return false
+      throw error
     }
-    return false
   }
 
   /**
@@ -562,12 +751,20 @@ export class NewbieTaskRunner {
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
       if (/security token.*invalid|InvalidClientTokenId|UnrecognizedClientException|ExpiredToken|invalid.*access.?key/i.test(msg)) {
-        throw new Error(
-          `AWS 账号密钥无效或已失效（本地账号：${account.id}）。请到「账号管理」重新填写 Access Key / Secret Key 后再试。原始错误：${msg}`,
+        throw Object.assign(
+          new Error(
+            `AWS 账号密钥无效或已失效（本地账号：${account.id}）。请到「账号管理」重新填写 Access Key / Secret Key 后再试。原始错误：${msg}`,
+          ),
+          { cause: error },
         )
       }
       throw error instanceof Error ? error : new Error(msg)
     }
+  }
+
+  private randomPassword() {
+    // RDS complexity: upper + lower + digit; avoid characters rejected by RDS passwords.
+    return `Aa9${crypto.randomBytes(18).toString('base64url')}`
   }
 
   private operationId(operationIds: Record<string, string>, step: string) {

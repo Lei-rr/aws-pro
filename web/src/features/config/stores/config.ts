@@ -3,7 +3,8 @@ import { configApi } from '@/features/config/api/config'
 import { apiObject } from '@/shared/api/http'
 import type { AppConfig } from '@/shared/types'
 
-let configPromise: Promise<AppConfig> | null = null
+let configPromise: Promise<AppConfig | null> | null = null
+let configRequestToken = 0
 
 export const useConfigStore = defineStore('config', {
   state: () => ({
@@ -15,33 +16,40 @@ export const useConfigStore = defineStore('config', {
     async load(options: { refresh?: boolean } = {}) {
       if (options.refresh) {
         configPromise = null
-        this.config = null
+        configRequestToken += 1
       }
-      if (this.config) return this.config
+      if (!options.refresh && this.config) return this.config
       if (!configPromise) {
+        const token = ++configRequestToken
         this.loading = true
         this.error = null
-        configPromise = configApi
+        const promise = configApi
           .all()
           .then((response) => {
+            if (token !== configRequestToken) return this.config
             this.config = apiObject<AppConfig>(response)
             return this.config
           })
           .catch((error) => {
+            if (token !== configRequestToken) return this.config
             this.error = error
             throw error
           })
           .finally(() => {
-            configPromise = null
+            if (token !== configRequestToken) return
+            if (configPromise === promise) configPromise = null
             this.loading = false
           })
+        configPromise = promise
       }
       return configPromise
     },
     clear() {
       configPromise = null
+      configRequestToken += 1
       this.config = null
       this.error = null
+      this.loading = false
     },
   },
 })

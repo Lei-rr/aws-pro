@@ -33,6 +33,16 @@ export class LightsailInstanceRepository {
     return updated
   }
 
+  async itemsByAccount(accountId: string): Promise<LightsailInstance[]> {
+    return (await this.all()).filter((item) => item.account_id === accountId)
+  }
+
+  async replaceAccount(accountId: string, items: LightsailInstance[]): Promise<void> {
+    await this.store.transaction((current) => ({
+      next: { items: [...(current.items ?? []).filter((item) => item.account_id !== accountId), ...items] },
+    }))
+  }
+
   async deleteByAccount(accountId: string): Promise<void> {
     await this.store.transaction((current) => ({
       next: { items: (current.items ?? []).filter((i) => i.account_id !== accountId) },

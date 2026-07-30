@@ -1,4 +1,4 @@
-FROM node:20-bookworm-slim AS builder
+FROM node:22-bookworm-slim AS builder
 
 WORKDIR /app
 
@@ -11,7 +11,7 @@ COPY . .
 
 RUN npm run build
 
-FROM node:20-bookworm-slim AS prod-deps
+FROM node:22-bookworm-slim AS prod-deps
 
 WORKDIR /app
 
@@ -52,7 +52,7 @@ function walk(dir, base = dir) {
 walk('/app/node_modules')
 NODE
 
-FROM node:20-bookworm-slim AS runtime
+FROM node:22-bookworm-slim AS runtime
 
 WORKDIR /app
 
@@ -73,12 +73,11 @@ COPY --from=builder /app/web/dist ./web/dist
 COPY package.json ./
 COPY docker/entrypoint.sh /entrypoint.sh
 
-RUN chmod +x /entrypoint.sh \
-  && mkdir -p /app/data
+RUN mkdir -p /app/data
 
 VOLUME ["/app/data"]
 
 EXPOSE 2023
 
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["sh", "/entrypoint.sh"]
 CMD ["node", "dist/server.js", "--port", "2023"]

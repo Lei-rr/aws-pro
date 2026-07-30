@@ -5,15 +5,17 @@ import { PageHeader } from '@/shared/ui/page-header'
 import { Button } from '@/shared/ui/button'
 import { Badge } from '@/shared/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableLoading } from '@/shared/ui/table'
+import { TablePagination } from '@/shared/ui/pagination'
 import AccountSelect from '@/shared/components/AccountSelect.vue'
 import { regionsApi } from '@/features/regions/api/regions'
 import { loadConfig, useConfigStore } from '@/features/config/stores/config'
-import { apiList, apiObject } from '@/shared/api/http'
+import { apiList } from '@/shared/api/http'
 import { regionName } from '@/shared/lib/format'
 import { toast } from '@/shared/lib/toast'
 import { errorMessage } from '@/shared/lib/errors'
 import { confirmDialog } from '@/shared/ui/confirm'
 import { useListPage } from '@/shared/lib/use-list-page'
+import { useLocalPagination } from '@/shared/lib/use-local-pagination'
 
 type RegionRow = { account_id?: string; region: string; status?: string }
 
@@ -29,24 +31,24 @@ const enabling = ref('')
 const accountId = ref('')
 const configuredRegions = ref<Record<string, string>>({})
 const items = ref<RegionRow[]>([])
-const loadToken = ref(0)
 const configStore = useConfigStore()
 
-const { loading, refreshing, runLoad, onRefresh, fail } = useListPage({
+const { loading, refreshing, pageSize, runLoad, onRefresh, onPageSizeChange, fail } = useListPage({
   pageSizeScope: 'aws-regions',
   load: async (options = {}) => {
     if (!accountId.value) return
-    const token = ++loadToken.value
     try {
       const response = await regionsApi.list(accountId.value, { refresh: options.refresh })
-      if (token !== loadToken.value) return
+      if (options.isLatest && !options.isLatest()) return false
       items.value = apiList<RegionRow>(response, ['items'])
     } catch (e) {
-      if (token !== loadToken.value) return
+      if (options.isLatest && !options.isLatest()) return false
       fail(e)
+      return false
     }
   },
 })
+const { page, total, pagedItems: pagedItems, resetPage } = useLocalPagination(items, pageSize)
 
 function statusMeta(status?: string) {
   return STATUS[status || ''] || { text: status || '未知' }
@@ -67,19 +69,6 @@ async function loadRegionConfig() {
   }
 }
 
-async function loadFromCache() {
-  if (!accountId.value) return
-  const token = ++loadToken.value
-  try {
-    const response = await regionsApi.list(accountId.value, { cache_only: true })
-    if (token !== loadToken.value) return
-    const list = apiList<RegionRow>(response, ['items'])
-    if (list.length) items.value = list
-  } catch {
-    /* silent */
-  }
-}
-
 async function query(refresh = false) {
   if (!accountId.value) return
   if (refresh) await onRefresh()
@@ -96,9 +85,8 @@ async function enableRegion(row: RegionRow) {
   enabling.value = row.region
   try {
     await regionsApi.enable({ account_id: accountId.value, region: row.region })
+    row.status = 'ENABLING'
     toast.success('已提交启用请求')
-    // 静默刷新列表，勿再 toast「已刷新」
-    await runLoad({ refresh: true })
   } catch (e) {
     toast.error(errorMessage(e, '启用区域失败'))
   } finally {
@@ -107,13 +95,14 @@ async function enableRegion(row: RegionRow) {
 }
 
 watch(accountId, () => {
+  resetPage()
   items.value = []
-  if (accountId.value) void loadFromCache()
+  if (accountId.value) void runLoad()
 })
 
 onMounted(async () => {
   await loadRegionConfig()
-  if (accountId.value) await loadFromCache()
+  if (accountId.value) await runLoad()
 })
 </script>
 
@@ -145,7 +134,7 @@ onMounted(async () => {
               请选择账号后点击刷新按钮查询区域状态。
             </TableCell>
           </TableRow>
-          <TableRow v-for="record in items" :key="`${record.account_id}:${record.region}`">
+          <TableRow v-for="record in pagedItems" :key="`${record.account_id}:${record.region}`">
             <TableCell class="px-4 font-medium">{{ label(record.region) }}</TableCell>
             <TableCell class="text-muted-foreground">{{ record.region }}</TableCell>
             <TableCell>
@@ -169,6 +158,15 @@ onMounted(async () => {
           </TableRow>
         </TableBody>
       </Table>
+      <TablePagination
+        class="mt-2"
+        :page="page"
+        :page-size="pageSize"
+        :total="total"
+        :disabled="loading"
+        @update:page="page = $event"
+        @update:page-size="onPageSizeChange"
+      />
     </TableLoading>
   </div>
 </template>

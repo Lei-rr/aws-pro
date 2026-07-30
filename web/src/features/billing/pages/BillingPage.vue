@@ -4,11 +4,13 @@ import { RefreshCw } from '@lucide/vue'
 import { PageHeader } from '@/shared/ui/page-header'
 import { Button } from '@/shared/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableLoading } from '@/shared/ui/table'
+import { TablePagination } from '@/shared/ui/pagination'
 import AccountSelect from '@/shared/components/AccountSelect.vue'
 import { billingApi } from '@/features/billing/api/billing'
 import { apiObject } from '@/shared/api/http'
 import { toast } from '@/shared/lib/toast'
 import { useListPage } from '@/shared/lib/use-list-page'
+import { useLocalPagination } from '@/shared/lib/use-local-pagination'
 
 type BillRow = {
   month: string
@@ -23,19 +25,17 @@ type BillRow = {
 const accountId = ref('')
 const bills = ref<BillRow[]>([])
 const summary = ref({ total_cost: 0, total_credit: 0 })
-const loadToken = ref(0)
 
-const { loading, refreshing, runLoad, onRefresh, fail } = useListPage({
+const { loading, refreshing, pageSize, runLoad, onRefresh, onPageSizeChange, fail } = useListPage({
   pageSizeScope: 'aws-billing',
   load: async (options = {}) => {
     if (!accountId.value) return
-    const token = ++loadToken.value
     try {
       const response = await billingApi.yearly(
         { account_id: accountId.value },
         { refresh: options.refresh },
       )
-      if (token !== loadToken.value) return
+      if (options.isLatest && !options.isLatest()) return false
       const billing = apiObject(response) as {
         items?: BillRow[]
         total_cost?: number
@@ -47,8 +47,9 @@ const { loading, refreshing, runLoad, onRefresh, fail } = useListPage({
         total_credit: billing.total_credit || 0,
       }
     } catch (e) {
-      if (token !== loadToken.value) return
+      if (options.isLatest && !options.isLatest()) return false
       fail(e)
+      return false
     }
   },
 })
@@ -68,28 +69,11 @@ const tableRows = computed(() => {
     ...bills.value,
   ]
 })
+const { page, total, pagedItems: pagedRows, resetPage } = useLocalPagination(tableRows, pageSize)
 
 function money(value: unknown) {
   const n = Number(value || 0)
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-
-async function loadFromCache() {
-  if (!accountId.value) return
-  const token = ++loadToken.value
-  try {
-    const response = await billingApi.yearly({ account_id: accountId.value }, { cache_only: true })
-    if (token !== loadToken.value) return
-    const billing = apiObject(response) as {
-      items?: BillRow[]
-      total_cost?: number
-      total_credit?: number
-    } | null
-    if (billing?.items?.length) {
-      bills.value = billing.items
-      summary.value = { total_cost: billing.total_cost || 0, total_credit: billing.total_credit || 0 }
-    }
-  } catch { /* silent */ }
 }
 
 async function query() {
@@ -101,13 +85,14 @@ async function query() {
 }
 
 watch(accountId, () => {
+  resetPage()
   bills.value = []
   summary.value = { total_cost: 0, total_credit: 0 }
-  if (accountId.value) void loadFromCache()
+  if (accountId.value) void runLoad()
 })
 
 onMounted(() => {
-  if (accountId.value) void loadFromCache()
+  if (accountId.value) void runLoad()
 })
 </script>
 
@@ -138,7 +123,7 @@ onMounted(() => {
               请选择账号后点击刷新按钮查询账单。
             </TableCell>
           </TableRow>
-          <TableRow v-for="record in tableRows" :key="record.month + String(record.account_id)" :class="record.summary && 'bg-muted/30 font-medium'">
+          <TableRow v-for="record in pagedRows" :key="record.month + String(record.account_id)" :class="record.summary && 'bg-muted/30 font-medium'">
             <TableCell class="px-4">{{ record.account_id }}</TableCell>
             <TableCell>{{ record.summary ? `${record.months} 个月` : record.month }}</TableCell>
             <TableCell class="tabular-nums">$ {{ money(record.cost) }}</TableCell>
@@ -147,6 +132,15 @@ onMounted(() => {
           </TableRow>
         </TableBody>
       </Table>
+      <TablePagination
+        class="mt-2"
+        :page="page"
+        :page-size="pageSize"
+        :total="total"
+        :disabled="loading"
+        @update:page="page = $event"
+        @update:page-size="onPageSizeChange"
+      />
     </TableLoading>
   </div>
 </template>

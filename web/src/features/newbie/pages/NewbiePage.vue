@@ -13,13 +13,17 @@ import { Field, FieldGroup, FieldLabel } from '@/shared/ui/field'
 import { JobProgressAlert } from '@/shared/ui/job-progress'
 import AccountSelect from '@/shared/components/AccountSelect.vue'
 import { newbieApi } from '@/features/newbie/api/newbie'
-import { apiObject } from '@/shared/api/http'
+import { apiPayload } from '@/shared/api/http'
 import { toast } from '@/shared/lib/toast'
 import { errorMessage } from '@/shared/lib/errors'
 import { confirmDialog } from '@/shared/ui/confirm'
 
+import type { NewbieTask } from '@/shared/types'
+
 const accountId = ref('')
 const loading = ref(false)
+const cancellingRequest = ref(false)
+const restoreFailed = ref(false)
 const running = ref(false)
 const step = ref('all')
 const stepOptions = [
@@ -29,12 +33,13 @@ const stepOptions = [
   { value: 'lambda', label: 'Lambda' },
   { value: 'rds', label: 'RDS' },
 ]
-const task = ref<any>(null)
+const task = ref<NewbieTask | null>(null)
 const logs = ref<string[]>(['等待开始任务...'])
 const logBox = ref<HTMLElement | null>(null)
 let eventSource: EventSource | null = null
-let pollTimer: ReturnType<typeof setInterval> | null = null
-let logCursor = 0
+let pollTimer: ReturnType<typeof setTimeout> | null = null
+let lastLogSeq = 0
+let watchVersion = 0
 
 const canStart = computed(() => !!accountId.value && !running.value)
 const selectedStepLabel = computed(
@@ -65,16 +70,22 @@ const progressText = computed(() => {
   return ''
 })
 const progressStatus = computed(() => String(task.value?.status || ''))
+const progressPercent = computed(() => {
+  const value = Number(task.value?.progress)
+  return Number.isFinite(value) ? value : null
+})
 
 function appendLog(line: string) {
   const text = String(line || '')
   if (!text) return
-  if (logs.value[logs.value.length - 1] === text) return
-  if (logs.value.slice(-20).includes(text)) return
+  const box = logBox.value
+  const follow = !box || box.scrollHeight - box.scrollTop - box.clientHeight < 48
   logs.value.push(text)
-  void nextTick(() => {
-    if (logBox.value) logBox.value.scrollTop = logBox.value.scrollHeight
-  })
+  if (follow) {
+    void nextTick(() => {
+      if (logBox.value) logBox.value.scrollTop = logBox.value.scrollHeight
+    })
+  }
 }
 
 function closeStream() {
@@ -85,24 +96,28 @@ function closeStream() {
 }
 function stopPolling() {
   if (pollTimer) {
-    clearInterval(pollTimer)
+    clearTimeout(pollTimer)
     pollTimer = null
   }
 }
 function stopWatching() {
+  watchVersion += 1
   closeStream()
   stopPolling()
 }
 
-async function pollTask(taskId: string) {
+async function pollTask(taskId: string, version: number) {
   try {
     const response = await newbieApi.getTask(taskId)
-    const t = apiObject(response) as any
+    if (version !== watchVersion) return
+    const t = apiPayload<NewbieTask>(response)
+    if (!t) throw new Error('任务状态响应为空')
     task.value = t
     const list = Array.isArray(t.logs) ? t.logs : []
-    while (logCursor < list.length) {
-      appendLog(list[logCursor])
-      logCursor += 1
+    const startSeq = Number(t.log_start_seq) > 0 ? Number(t.log_start_seq) : 1
+    for (let index = Math.max(0, lastLogSeq - startSeq + 1); index < list.length; index++) {
+      appendLog(list[index])
+      lastLogSeq = startSeq + index
     }
     if (['completed', 'failed', 'cancelled'].includes(t.status)) {
       running.value = false
@@ -110,19 +125,24 @@ async function pollTask(taskId: string) {
       notifyTerminal(t.status, t.message || list[list.length - 1] || '')
     } else {
       running.value = true
+      pollTimer = setTimeout(() => void pollTask(taskId, version), 2000)
     }
   } catch (e) {
+    if (version !== watchVersion) return
     // 任务已创建后轮询失败也要写进日志，避免「没反应」
     appendLog(`拉取任务状态失败：${errorMessage(e, '网络错误')}`)
+    if (running.value) pollTimer = setTimeout(() => void pollTask(taskId, version), 2000)
   }
 }
 
 function openStream(taskId: string) {
   closeStream()
-  eventSource = new EventSource(newbieApi.streamUrl(taskId), { withCredentials: true } as any)
+  eventSource = new EventSource(newbieApi.streamUrl(taskId, lastLogSeq), { withCredentials: true })
   eventSource.onmessage = (event) => {
+    const seq = Number(event.lastEventId)
+    if (Number.isFinite(seq) && seq <= lastLogSeq) return
     appendLog(event.data || '')
-    syncTerminalState(event.data || '')
+    if (Number.isFinite(seq)) lastLogSeq = seq
   }
   eventSource.onerror = () => {
     closeStream()
@@ -132,8 +152,8 @@ function openStream(taskId: string) {
 function watchTask(taskId: string) {
   openStream(taskId)
   stopPolling()
-  pollTimer = setInterval(() => void pollTask(taskId), 2000)
-  void pollTask(taskId)
+  const version = ++watchVersion
+  void pollTask(taskId, version)
 }
 
 let terminalNotified = false
@@ -172,43 +192,29 @@ function humanizeAwsCredentialError(raw: unknown): string {
   return ''
 }
 
-function syncTerminalState(line: string) {
-  if (line.includes('执行完毕')) {
-    task.value = { ...task.value, status: 'completed' }
-    running.value = false
-    notifyTerminal('completed', line)
-  } else if (line.includes('任务失败')) {
-    task.value = { ...task.value, status: 'failed' }
-    running.value = false
-    notifyTerminal('failed', line)
-  } else if (line.includes('任务已终止')) {
-    task.value = { ...task.value, status: 'cancelled' }
-    running.value = false
-    notifyTerminal('cancelled', line)
-  }
-  if (!running.value) stopWatching()
-}
-
 async function restoreActiveTask() {
   try {
-    const response = await newbieApi.getActiveTask()
-    const t = apiObject(response) as any
+    const response = await newbieApi.getRecentTask()
+    const t = apiPayload<NewbieTask>(response)
     if (!t?.id) return
     task.value = t
+    restoreFailed.value = false
     accountId.value = t.account_id || accountId.value
     step.value = t.step || step.value
     logs.value = Array.isArray(t.logs) && t.logs.length ? [...t.logs] : logs.value
-    logCursor = Array.isArray(t.logs) ? t.logs.length : 0
+    lastLogSeq = Number(t.next_log_seq) > 0
+      ? Number(t.next_log_seq) - 1
+      : (Number(t.log_start_seq) > 0 ? Number(t.log_start_seq) : 1) + (t.logs?.length ?? 0) - 1
     if (['pending', 'running', 'cancelling'].includes(t.status)) {
       running.value = true
       terminalNotified = false
       watchTask(t.id)
-    } else if (t.status === 'failed') {
-      // 打开页面时已有失败任务：直接展示日志 + 提示一次
-      notifyTerminal('failed', t.message || (t.logs || []).slice(-1)[0] || '')
+    } else if (['failed', 'completed', 'cancelled'].includes(t.status)) {
+      terminalNotified = true
     }
-  } catch {
-    /* ignore */
+  } catch (e) {
+    restoreFailed.value = true
+    logs.value = [`任务状态恢复失败：${errorMessage(e, '网络错误')}。请刷新页面重试。`]
   }
 }
 
@@ -217,19 +223,22 @@ async function startTask() {
   terminalNotified = false
   logs.value = [`正在创建后台任务（账号: ${accountId.value}，范围: ${selectedStepLabel.value}）...`]
   stopWatching()
-  logCursor = 0
+  lastLogSeq = 0
   task.value = null
   try {
     const response = await newbieApi.createTask({ account_id: accountId.value, step: step.value })
-    const created = apiObject(response) as any
+    const created = apiPayload<NewbieTask>(response)
+    if (!created) throw new Error('创建成功但任务响应为空')
     task.value = created
     // 立即用服务端初始日志覆盖，避免只有「正在创建」
     if (Array.isArray(created.logs) && created.logs.length) {
       logs.value = [...created.logs]
-      logCursor = created.logs.length
+      lastLogSeq = Number(created.next_log_seq) > 0
+        ? Number(created.next_log_seq) - 1
+        : (Number(created.log_start_seq) > 0 ? Number(created.log_start_seq) : 1) + created.logs.length - 1
     } else {
       appendLog('任务已创建，等待后台执行...')
-      logCursor = logs.value.length
+      lastLogSeq = 0
     }
     if (!created?.id) {
       toast.error('创建成功但未返回任务 ID')
@@ -270,13 +279,16 @@ async function confirmStart() {
 }
 
 async function cancelTask() {
-  if (!task.value?.id) return
+  if (!task.value?.id || cancellingRequest.value) return
+  cancellingRequest.value = true
   try {
     const response = await newbieApi.cancelTask(String(task.value.id))
-    task.value = apiObject(response)
+    task.value = apiPayload<NewbieTask>(response)
     appendLog('已发送终止请求，等待当前步骤停止并清理资源...')
   } catch (e) {
     toast.error(errorMessage(e, '终止新手任务失败'))
+  } finally {
+    cancellingRequest.value = false
   }
 }
 
@@ -296,7 +308,7 @@ async function confirmCancel() {
 
 function clearLog() {
   logs.value = ['等待开始任务...']
-  logCursor = 0
+  lastLogSeq = 0
 }
 
 onMounted(() => void restoreActiveTask())
@@ -321,11 +333,11 @@ onBeforeUnmount(() => stopWatching())
       <FieldGroup class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Field>
           <FieldLabel>AWS 账号</FieldLabel>
-          <AccountSelect v-model="accountId" />
+          <AccountSelect v-model="accountId" :disabled="loading || running" />
         </Field>
         <Field>
           <FieldLabel>任务范围</FieldLabel>
-          <Select v-model="step" :disabled="running">
+          <Select v-model="step" :disabled="loading || running">
             <SelectTrigger class="w-full">
               <SelectValue placeholder="选择任务" />
             </SelectTrigger>
@@ -339,17 +351,17 @@ onBeforeUnmount(() => stopWatching())
         <Field class="sm:col-span-2 lg:col-span-1">
           <FieldLabel class="opacity-0 max-lg:hidden">操作</FieldLabel>
           <div class="flex flex-wrap items-center gap-2">
-            <Button size="sm" :loading="loading || running" :disabled="!canStart" @click="confirmStart">
-              开始执行
+            <Button size="sm" :loading="loading" :disabled="!canStart || loading" @click="confirmStart">
+              {{ loading ? '创建中…' : '开始执行' }}
             </Button>
             <Button
               size="sm"
               variant="outline"
               class="text-destructive"
-              :disabled="!running"
+              :disabled="!running || cancellingRequest || task?.status === 'cancelling'"
               @click="confirmCancel"
             >
-              终止任务
+              {{ cancellingRequest || task?.status === 'cancelling' ? '终止中…' : '终止任务' }}
             </Button>
             <Button size="sm" variant="outline" :disabled="running" @click="clearLog">
               清空日志
@@ -363,6 +375,7 @@ onBeforeUnmount(() => stopWatching())
       :running="progressRunning"
       :text="progressText"
       :status="progressStatus"
+      :percent="progressPercent"
       title="新手任务"
     />
 
@@ -370,7 +383,7 @@ onBeforeUnmount(() => stopWatching())
       <div>
         <h2 class="text-base font-semibold">实时日志</h2>
         <p class="text-muted-foreground text-sm">
-          状态：{{ statusText }}。日志来自后台任务落盘，SSE 断开不影响执行。
+          状态：{{ restoreFailed ? '恢复失败' : statusText }}。日志来自后台任务落盘，SSE 断开不影响执行。
         </p>
       </div>
       <pre

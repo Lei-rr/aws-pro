@@ -150,11 +150,11 @@
 }
 
 /* fallback spinner if tw-animate-css animate-spin is missing */
-@keyframes dns-pro-spin {
+@keyframes aws-pro-spin {
   to {
     transform: rotate(360deg);
   }
 }
 .animate-spin {
-  animation: dns-pro-spin 0.75s linear infinite;
+  animation: aws-pro-spin 0.75s linear infinite;
 }

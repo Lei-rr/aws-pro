@@ -7,7 +7,8 @@ const LOCK_TIMEOUT_MS = 5000
 const STALE_LOCK_MS = 30000
 
 /** Process-local memory view of JSON files. File remains source of truth on disk. */
-const memoryStore = new Map<string, unknown>()
+type MemoryEntry = { value: unknown; signature: string }
+const memoryStore = new Map<string, MemoryEntry>()
 
 export function setDataRoot(root: string): void {
   dataRoot = path.resolve(root)
@@ -45,13 +46,49 @@ export class JsonStore<T extends object = Record<string, unknown>> {
     return structuredClone(value)
   }
 
-  private readMemory(): T | undefined {
-    if (!memoryStore.has(this.memoryKey())) return undefined
-    return this.clone(memoryStore.get(this.memoryKey()) as T)
+  private async fileSignature(): Promise<string> {
+    try {
+      const stat = await fs.stat(this.absolutePath())
+      return `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}`
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return 'missing'
+      throw error
+    }
   }
 
-  private writeMemory(data: T): void {
-    memoryStore.set(this.memoryKey(), this.clone(data))
+  private async readMemory(): Promise<T | undefined> {
+    const entry = memoryStore.get(this.memoryKey())
+    if (!entry) return undefined
+    if (entry.signature !== (await this.fileSignature())) {
+      this.invalidateMemory()
+      return undefined
+    }
+    return this.clone(entry.value as T)
+  }
+
+  private async writeMemory(data: T, signature?: string): Promise<void> {
+    memoryStore.set(this.memoryKey(), {
+      value: this.clone(data),
+      signature: signature ?? (await this.fileSignature()),
+    })
+  }
+
+  private async readSnapshot(): Promise<{ value: T; signature: string }> {
+    const filePath = this.absolutePath()
+    let handle: Awaited<ReturnType<typeof fs.open>> | undefined
+    try {
+      handle = await fs.open(filePath, 'r')
+      const [content, stat] = await Promise.all([handle.readFile('utf-8'), handle.stat()])
+      const value = content.trim() === '' ? this.clone(this.defaultValue) : ((JSON.parse(content) as T) ?? this.defaultValue)
+      return { value: this.clone(value), signature: `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}` }
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+        return { value: this.clone(this.defaultValue), signature: 'missing' }
+      }
+      throw new ApiError('server_error', `Failed to read ${filePath}: ${error instanceof Error ? error.message : String(error)}`, 500)
+    } finally {
+      await handle?.close()
+    }
   }
 
   /** Drop this store's memory view (e.g. after external file replacement). */
@@ -60,28 +97,12 @@ export class JsonStore<T extends object = Record<string, unknown>> {
   }
 
   async read(): Promise<T> {
-    const cached = this.readMemory()
+    const cached = await this.readMemory()
     if (cached !== undefined) return cached
 
-    const filePath = this.absolutePath()
-    try {
-      const content = await fs.readFile(filePath, 'utf-8')
-      if (content.trim() === '') {
-        const fallback = this.clone(this.defaultValue)
-        this.writeMemory(fallback)
-        return this.clone(fallback)
-      }
-      const parsed = (JSON.parse(content) as T) ?? this.defaultValue
-      this.writeMemory(parsed)
-      return this.clone(parsed)
-    } catch (error) {
-      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-        const fallback = this.clone(this.defaultValue)
-        this.writeMemory(fallback)
-        return this.clone(fallback)
-      }
-      throw new ApiError('server_error', `Failed to read ${filePath}: ${error instanceof Error ? error.message : String(error)}`, 500)
-    }
+    const snapshot = await this.readSnapshot()
+    await this.writeMemory(snapshot.value, snapshot.signature)
+    return this.clone(snapshot.value)
   }
 
   async write(data: T): Promise<void> {
@@ -90,15 +111,18 @@ export class JsonStore<T extends object = Record<string, unknown>> {
     const tmp = filePath + '.tmp'
     const encoded = JSON.stringify(data, null, 2) + '\n'
     const handle = await fs.open(tmp, 'w')
+    let signature: string
     try {
       await handle.writeFile(encoded, 'utf-8')
       await handle.sync()
+      const stat = await handle.stat()
+      signature = `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}`
     } finally {
       await handle.close()
     }
     await fs.rename(tmp, filePath)
-    // Keep memory coherent with durable file state.
-    this.writeMemory(data)
+    // The renamed file keeps the temp file's inode and stat signature.
+    await this.writeMemory(data, signature)
   }
 
   async transaction<U>(mutator: (current: T) => { next: T; result?: U }): Promise<U | undefined> {

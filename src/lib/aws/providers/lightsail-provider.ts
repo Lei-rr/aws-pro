@@ -10,6 +10,7 @@ import {
   GetRegionsCommand,
   GetStaticIpCommand,
   GetStaticIpsCommand,
+  type GetStaticIpsResult,
   OpenInstancePublicPortsCommand,
   RebootInstanceCommand,
   ReleaseStaticIpCommand,
@@ -77,29 +78,40 @@ export class LightsailProvider {
     return awsCall('lightsail.instances', async () => {
       const client = this.clients.lightsail(account, region)
       const staticIps: Record<string, string> = {}
-      try {
-        const sip = await client.send(new GetStaticIpsCommand({}))
-        for (const ip of sip.staticIps ?? []) {
+      let staticIpToken: string | undefined
+      do {
+        const sip = await withAwsRetry('list Lightsail static IPs', () =>
+          client.send(new GetStaticIpsCommand({ pageToken: staticIpToken })),
+        )
+        for (const ip of sip?.staticIps ?? []) {
           if (ip.attachedTo && ip.ipAddress && ip.isAttached !== false) staticIps[ip.attachedTo] = ip.ipAddress
         }
-      } catch {
-        // ignore
-      }
-      const result = await client.send(new GetInstancesCommand({}))
-      return (result.instances ?? []).map((item) => {
-        const name = String(item.name ?? '')
-        return {
-          account_id: account.id,
-          region,
-          name,
-          state: String(item.state?.name ?? ''),
-          public_ip: item.publicIpAddress ?? '',
-          static_ip: staticIps[name] ?? '',
-          ipv6: item.ipv6Addresses?.[0] ?? '',
-          zone: item.location?.availabilityZone ?? '',
-          bundle_id: String(item.bundleId ?? ''),
+        staticIpToken = sip?.nextPageToken
+      } while (staticIpToken)
+
+      const instances: LightsailInstance[] = []
+      let instanceToken: string | undefined
+      do {
+        const result = await withAwsRetry('list Lightsail instances', () =>
+          client.send(new GetInstancesCommand({ pageToken: instanceToken })),
+        )
+        for (const item of result?.instances ?? []) {
+          const name = String(item.name ?? '')
+          instances.push({
+            account_id: account.id,
+            region,
+            name,
+            state: String(item.state?.name ?? ''),
+            public_ip: item.publicIpAddress ?? '',
+            static_ip: staticIps[name] ?? '',
+            ipv6: item.ipv6Addresses?.[0] ?? '',
+            zone: item.location?.availabilityZone ?? '',
+            bundle_id: String(item.bundleId ?? ''),
+          })
         }
-      })
+        instanceToken = result?.nextPageToken
+      } while (instanceToken)
+      return instances
     })
   }
 
@@ -160,7 +172,10 @@ export class LightsailProvider {
       try {
         await this.releaseStaticIp(account, region, instanceName)
       } catch (error) {
-        throw new Error(`Static IP cleanup failed; instance was not deleted: ${error instanceof Error ? error.message : String(error)}`)
+        throw Object.assign(
+          new Error(`Static IP cleanup failed; instance was not deleted: ${error instanceof Error ? error.message : String(error)}`),
+          { cause: error },
+        )
       }
       await withAwsRetry('delete Lightsail instance', () =>
         this.clients.lightsail(account, region).send(new DeleteInstanceCommand({ instanceName })),
@@ -194,10 +209,16 @@ export class LightsailProvider {
   }
 
   private async attachedStaticIpName(client: any, instanceName: string) {
-    const result = await client.send(new GetStaticIpsCommand({}))
-    for (const ip of result.staticIps ?? []) {
-      if (ip.attachedTo === instanceName && ip.isAttached !== false) return String(ip.name ?? '')
-    }
+    let pageToken: string | undefined
+    do {
+      const result = await withAwsRetry<GetStaticIpsResult>('list attached Lightsail static IPs', () =>
+        client.send(new GetStaticIpsCommand({ pageToken })),
+      )
+      for (const ip of result?.staticIps ?? []) {
+        if (ip.attachedTo === instanceName && ip.isAttached !== false) return String(ip.name ?? '')
+      }
+      pageToken = result?.nextPageToken
+    } while (pageToken)
     return ''
   }
 

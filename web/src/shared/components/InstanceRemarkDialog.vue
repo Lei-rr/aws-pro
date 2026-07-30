@@ -5,11 +5,14 @@ import { Field, FieldGroup, FieldLabel } from '@/shared/ui/field'
 import { Input } from '@/shared/ui/input'
 
 const open = defineModel<boolean>('open', { default: false })
-const props = defineProps<{
+defineProps<{
   saving?: boolean
   form: { name?: string; remark?: string }
 }>()
-const emit = defineEmits<{ save: [] }>()
+const emit = defineEmits<{
+  save: []
+  'update:remark': [value: string]
+}>()
 </script>
 
 <template>
@@ -25,7 +28,7 @@ const emit = defineEmits<{ save: [] }>()
           :model-value="form.remark || ''"
           maxlength="200"
           placeholder="业务说明（最多 200 字）"
-          @update:model-value="(v) => (form.remark = String(v ?? ''))"
+          @update:model-value="emit('update:remark', String($event ?? ''))"
         />
       </Field>
     </FieldGroup>
