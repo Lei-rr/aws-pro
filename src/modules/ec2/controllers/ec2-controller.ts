@@ -1,11 +1,17 @@
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { success } from '../../../lib/http/api-response.js'
-import { bodyRecord, bodyString, queryRecord, queryString } from '../../../lib/utils/request-parse.js'
+import { bodyRecord, bodyString, queryBool, queryRecord, queryString } from '../../../lib/utils/request-parse.js'
 
 export async function ec2Instances(request: FastifyRequest, reply: FastifyReply) {
   const query = queryRecord(request)
   return reply.send(
-    success(await request.server.ctx.ec2Service.listCached(queryString(query, 'account_id'), queryString(query, 'region'))),
+    success(
+      await request.server.ctx.ec2Service.listCached(
+        queryString(query, 'account_id'),
+        queryString(query, 'region'),
+        queryBool(query, 'refresh'),
+      ),
+    ),
   )
 }
 

@@ -11,7 +11,10 @@ import { loadAccounts, useAccountStore } from '@/features/accounts/stores/accoun
 import { toast } from '@/shared/lib/toast'
 import { errorMessage } from '@/shared/lib/errors'
 
-const props = defineProps<{ modelValue?: string; disabled?: boolean }>()
+const props = withDefaults(
+  defineProps<{ modelValue?: string; disabled?: boolean; autoSelect?: boolean }>(),
+  { autoSelect: true },
+)
 const emit = defineEmits<{ 'update:modelValue': [string]; loaded: [unknown[]] }>()
 
 const loading = ref(false)
@@ -23,7 +26,7 @@ onMounted(async () => {
   try {
     await loadAccounts()
     emit('loaded', accounts.value)
-    if (!props.modelValue && accounts.value[0]) {
+    if (props.autoSelect && !props.modelValue && accounts.value[0]) {
       emit('update:modelValue', accounts.value[0].id)
     }
   } catch (e) {

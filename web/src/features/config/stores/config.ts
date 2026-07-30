@@ -13,12 +13,12 @@ export const useConfigStore = defineStore('config', {
     error: null as unknown,
   }),
   actions: {
-    async load(options: { refresh?: boolean } = {}) {
-      if (options.refresh) {
+    async load(options: { force?: boolean } = {}) {
+      if (options.force) {
         configPromise = null
         configRequestToken += 1
       }
-      if (!options.refresh && this.config) return this.config
+      if (!options.force && this.config) return this.config
       if (!configPromise) {
         const token = ++configRequestToken
         this.loading = true
@@ -54,6 +54,6 @@ export const useConfigStore = defineStore('config', {
   },
 })
 
-export async function loadConfig(options: { refresh?: boolean } = {}) {
+export async function loadConfig(options: { force?: boolean } = {}) {
   return useConfigStore().load(options)
 }

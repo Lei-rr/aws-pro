@@ -1,6 +1,7 @@
 import { ApiError } from '../../lib/http/api-error.js'
 import {
-  awsAccountTags,
+  awsAccountTag,
+  awsResourceTag,
   CacheTtl,
   invalidateAwsCache,
   withAwsCache,
@@ -29,7 +30,7 @@ export class RegionService {
 
     const result = await withAwsCache({
       key: { prefix: 'aws:regions', parts: { account_id: accountId } },
-      tags: awsAccountTags(accountId, 'regions'),
+      tags: [awsAccountTag(accountId), awsResourceTag(accountId, 'regions')],
       ttlMs: CacheTtl.awsLookup,
       mode,
       emptyOnMiss: [] as Array<{ account_id: string; region: string; status: string }>,
@@ -50,7 +51,7 @@ export class RegionService {
     if (!configured[region]) throw new ApiError('region_not_configured', 'Region is not configured', 422, { region })
     const account = await this.accounts.requireAccount(accountId)
     const result = await this.provider.enable(account, region)
-    invalidateAwsCache(awsAccountTags(accountId, 'regions'))
+    invalidateAwsCache([awsResourceTag(accountId, 'regions')])
     return result
   }
 }

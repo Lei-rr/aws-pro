@@ -33,7 +33,7 @@ const { loading, refreshing, pageSize, runLoad, onRefresh, onPageSizeChange, fai
     try {
       const response = await billingApi.yearly(
         { account_id: accountId.value },
-        { refresh: options.refresh },
+        { refresh: options.refresh, cacheOnly: !options.refresh },
       )
       if (options.isLatest && !options.isLatest()) return false
       const billing = apiObject(response) as {
@@ -99,7 +99,7 @@ onMounted(() => {
 <template>
   <div class="flex flex-1 flex-col gap-4">
     <PageHeader title="账单概览" description="查询最近 12 个完整月和当月费用。">
-      <div class="w-48"><AccountSelect v-model="accountId" /></div>
+      <div class="w-48"><AccountSelect v-model="accountId" :auto-select="false" /></div>
       <Button size="sm" :disabled="!accountId || loading || refreshing" @click="query">
         <RefreshCw class="size-4" :class="refreshing && 'animate-spin'" />
         刷新账单

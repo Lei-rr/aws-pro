@@ -121,6 +121,8 @@ export class AccountService {
   }
 
   private invalidateAccountCaches(...accountIds: string[]): void {
+    // Account credentials affect only that account's remote lookups and filtered instance lists.
+    // The global tags invalidate aggregate Lightsail/EC2 lists without evicting other accounts' filtered caches.
     const tags = new Set<string>(['lightsail', 'ec2'])
     for (const accountId of accountIds) {
       if (!accountId) continue

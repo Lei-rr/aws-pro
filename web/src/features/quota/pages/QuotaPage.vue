@@ -29,7 +29,7 @@ const { loading, refreshing, pageSize, runLoad, onRefresh, onPageSizeChange, fai
     try {
       const response = await quotaApi.vcpu(
         { account_id: accountId.value, region: region.value },
-        { refresh: options.refresh },
+        { refresh: options.refresh, cacheOnly: !options.refresh },
       )
       if (options.isLatest && !options.isLatest()) return false
       items.value = apiList<QuotaRow>(response, ['items'])
@@ -64,8 +64,8 @@ onMounted(() => {
 <template>
   <div class="flex flex-1 flex-col gap-4">
     <PageHeader title="vCPU 配额" description="按账号和区域查询 Lightsail 相关服务配额。">
-      <div class="w-44"><AccountSelect v-model="accountId" /></div>
-      <div class="w-44"><RegionSelect v-model="region" @loaded="(r) => (regions = r)" /></div>
+      <div class="w-44"><AccountSelect v-model="accountId" :auto-select="false" /></div>
+      <div class="w-44"><RegionSelect v-model="region" :auto-select="false" @loaded="(r) => (regions = r)" /></div>
       <Button size="sm" :disabled="!accountId || !region || loading || refreshing" @click="query">
         <RefreshCw class="size-4" :class="refreshing && 'animate-spin'" />
         刷新配额

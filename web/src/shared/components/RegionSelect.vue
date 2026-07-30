@@ -15,8 +15,9 @@ const props = withDefaults(
   defineProps<{
     modelValue?: string
     source?: 'regions' | 'ec2_regions'
+    autoSelect?: boolean
   }>(),
-  { source: 'regions' },
+  { source: 'regions', autoSelect: true },
 )
 const emit = defineEmits<{ 'update:modelValue': [string]; loaded: [Record<string, string>] }>()
 
@@ -33,7 +34,7 @@ async function ensureLoaded() {
   try {
     await loadConfig()
     emit('loaded', regions.value)
-    if (!props.modelValue) {
+    if (props.autoSelect && !props.modelValue) {
       const first = Object.keys(regions.value)[0] || 'us-east-1'
       emit('update:modelValue', first)
     }

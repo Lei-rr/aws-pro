@@ -37,7 +37,7 @@ export class Ec2Service {
     return { amis: AMIS, instance_types: INSTANCE_TYPES }
   }
 
-  async listCached(accountId?: string, region?: string) {
+  async listCached(accountId?: string, region?: string, refresh = false) {
     const filters = {
       account_id: accountId?.trim() ? v.accountId(accountId) : null,
       region: region?.trim() ? v.region(region) : null,
@@ -46,7 +46,7 @@ export class Ec2Service {
       key: { prefix: 'aws:ec2:list', parts: { account_id: filters.account_id, region: filters.region } },
       tags: this.tags(filters.account_id),
       ttlMs: CacheTtl.instanceList,
-      mode: { refresh: false, cacheOnly: false },
+      mode: { refresh, cacheOnly: false },
       sourceOnLoad: 'local',
       loader: async () => {
         let items = await this.instances.all()
@@ -71,7 +71,7 @@ export class Ec2Service {
       remark: remarks.get(`${item.account_id}|${item.region}|${item.id}`) ?? '',
     }))
     await this.instances.replaceScope(account.id, region, synced)
-    invalidateAwsCache(this.tags(account.id))
+    invalidateAwsCache(this.mutationTags(account.id))
     return { instances: synced, count: synced.length, account_id: account.id, region }
   }
 
@@ -79,7 +79,7 @@ export class Ec2Service {
     const account = await this.accounts.requireAccount(accountId)
     region = v.region(region)
     await this.provider.createInstance(account, region, this.normalizeCreate(data))
-    invalidateAwsCache(this.tags(account.id))
+    invalidateAwsCache(this.mutationTags(account.id))
     try {
       return await this.sync(account.id, region)
     } catch (error) {
@@ -122,7 +122,7 @@ export class Ec2Service {
       default:
         throw new ApiError('ec2_action_invalid', 'Invalid EC2 action', 422, { action })
     }
-    invalidateAwsCache(this.tags(account.id))
+    invalidateAwsCache(this.mutationTags(account.id))
     return `${action} submitted`
   }
 
@@ -132,7 +132,7 @@ export class Ec2Service {
     instanceId = this.instanceId(instanceId)
     const updated = await this.instances.updateRemark(accountId, region, instanceId, remark.trim())
     if (!updated) throw new ApiError('ec2_instance_not_found', 'EC2 instance not found', 404, { instance: instanceId })
-    invalidateAwsCache(this.tags(accountId))
+    invalidateAwsCache(this.mutationTags(accountId))
     return updated
   }
 
@@ -167,6 +167,10 @@ export class Ec2Service {
   }
 
   private tags(accountId?: string | null) {
-    return accountId ? [`ec2:${accountId}`, 'ec2'] : ['ec2']
+    return accountId ? [`ec2:${accountId}`] : ['ec2']
+  }
+
+  private mutationTags(accountId: string) {
+    return [`ec2:${accountId}`, 'ec2']
   }
 }

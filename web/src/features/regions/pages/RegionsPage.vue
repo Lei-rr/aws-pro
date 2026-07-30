@@ -38,7 +38,10 @@ const { loading, refreshing, pageSize, runLoad, onRefresh, onPageSizeChange, fai
   load: async (options = {}) => {
     if (!accountId.value) return
     try {
-      const response = await regionsApi.list(accountId.value, { refresh: options.refresh })
+      const response = await regionsApi.list(accountId.value, {
+        refresh: options.refresh,
+        cacheOnly: !options.refresh,
+      })
       if (options.isLatest && !options.isLatest()) return false
       items.value = apiList<RegionRow>(response, ['items'])
     } catch (e) {
@@ -110,7 +113,7 @@ onMounted(async () => {
   <div class="flex flex-1 flex-col gap-4">
     <PageHeader title="区域管理" description="使用 AWS Account API 查询账号区域启用状态，并开启未启用区域。">
       <div class="w-48">
-        <AccountSelect v-model="accountId" />
+        <AccountSelect v-model="accountId" :auto-select="false" />
       </div>
       <Button size="sm" :disabled="!accountId || loading || refreshing" @click="query(true)">
         <RefreshCw class="size-4" :class="refreshing && 'animate-spin'" />

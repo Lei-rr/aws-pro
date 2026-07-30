@@ -24,10 +24,10 @@ const { loading, refreshing, runLoad, onRefresh, fail } = useListPage({
   load: async (options = {}) => {
     try {
       const [, , ls, ec2] = await Promise.all([
-        loadAccounts({ refresh: true }),
-        loadConfig({ refresh: true }),
-        lightsailApi.instances(),
-        ec2Api.instances(),
+        loadAccounts({ force: options.refresh }),
+        loadConfig({ force: options.refresh }),
+        lightsailApi.instances(options.refresh ? { refresh: 1 } : {}),
+        ec2Api.instances(options.refresh ? { refresh: 1 } : {}),
       ])
       if (options.isLatest && !options.isLatest()) return false
       lightsailInstances.value = apiList<AwsInstance>(ls, ['items'])

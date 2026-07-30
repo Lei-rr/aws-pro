@@ -15,15 +15,12 @@ export type CachedResult<T> = {
   hit: boolean
 }
 
-const HOUR = 60 * 60 * 1000
-const MINUTE = 60 * 1000
-
 /** Shared TTL presets for aws-pro modules. */
 export const CacheTtl = {
-  /** Regions / quotas / billing: long-lived until manual refresh. */
-  awsLookup: 24 * HOUR,
-  /** Lightsail/EC2 list memory cache over local JSON. */
-  instanceList: 5 * MINUTE,
+  /** Remote AWS lookups live for the process lifetime; refresh=1 overwrites them. */
+  awsLookup: Number.POSITIVE_INFINITY,
+  /** Local JSON-backed lists also stay hot until mutation invalidation or restart. */
+  instanceList: Number.POSITIVE_INFINITY,
 } as const
 
 export function parseCacheMode(input: {
@@ -32,17 +29,22 @@ export function parseCacheMode(input: {
   cacheOnly?: unknown
 }): Required<CacheReadMode> {
   const refresh = Boolean(input.refresh)
-  // Match CacheManager: respect explicit cacheOnly; otherwise default to cache-only when not refreshing.
-  const explicit =
-    Object.prototype.hasOwnProperty.call(input, 'cache_only') || Object.prototype.hasOwnProperty.call(input, 'cacheOnly')
-  const cacheOnly = explicit ? Boolean(input.cache_only ?? input.cacheOnly) : !refresh
+  const cacheOnly = Boolean(input.cache_only ?? input.cacheOnly)
   return { refresh, cacheOnly }
 }
 
+export function awsAccountTag(accountId: string): string {
+  return `aws:${accountId}`
+}
+
+export function awsResourceTag(accountId: string, resource: string): string {
+  return `aws:${resource}:${accountId}`
+}
+
 export function awsAccountTags(accountId: string, ...extra: string[]): string[] {
-  const tags = [`aws:${accountId}`]
+  const tags = [awsAccountTag(accountId)]
   for (const tag of extra) {
-    if (tag) tags.push(tag.startsWith('aws:') ? tag : `aws:${tag}:${accountId}`)
+    if (tag) tags.push(tag.startsWith('aws:') ? tag : awsResourceTag(accountId, tag))
   }
   return tags
 }
@@ -68,9 +70,9 @@ function mapResult<T>(result: CacheResult<T>, sourceOnLoad: 'aws' | 'local'): Ca
 
 /**
  * Memory-only helper for reconstructable AWS lookups / local list hot cache.
- * - refresh=false + cacheOnly=true  => only memory; miss returns emptyOnMiss
- * - refresh=false + cacheOnly=false => memory miss runs loader (local JSON / etc.)
- * - refresh=true                    => always run loader and store in memory
+ * - normal read                 => memory hit, otherwise run loader and populate memory
+ * - explicit internal cacheOnly => only memory; miss returns emptyOnMiss
+ * - refresh=true                => always run loader and overwrite memory
  */
 export async function withAwsCache<T>(options: {
   key: string | { prefix: string; parts: Record<string, unknown> }

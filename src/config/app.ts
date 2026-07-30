@@ -21,7 +21,7 @@ const DEFAULT_CONFIG: AppConfig = {
   port: 2023,
   logLevel: false,
   dataDir: path.resolve('data'),
-  cacheMaxEntries: 1000,
+  cacheMaxEntries: 0,
   cacheSweepIntervalMs: 10 * 60 * 1000,
   sessionSecret: '',
   sessionCookieName: 'aws_pro_session',

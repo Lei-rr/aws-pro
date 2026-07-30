@@ -16,14 +16,14 @@ export class LightsailService {
     private readonly instances: LightsailInstanceRepository,
   ) {}
 
-  async listCached(accountId?: string, region?: string) {
+  async listCached(accountId?: string, region?: string, refresh = false) {
     const filters = this.normalizeListFilters(accountId, region)
     const result = await withAwsCache<LightsailInstance[]>({
       key: { prefix: 'aws:lightsail:list', parts: { account_id: filters.account_id, region: filters.region } },
       tags: this.tags(filters.account_id),
       ttlMs: CacheTtl.instanceList,
       // Local JSON is source of truth; memory only avoids re-reading/filtering every request.
-      mode: { refresh: false, cacheOnly: false },
+      mode: { refresh, cacheOnly: false },
       sourceOnLoad: 'local',
       loader: async () => {
         let items = await this.instances.all()
@@ -62,7 +62,7 @@ export class LightsailService {
       }
     })
     await this.instances.replaceScope(account.id, region, synced)
-    invalidateAwsCache(this.tags(account.id))
+    invalidateAwsCache(this.mutationTags(account.id))
     return { instances: synced, count: synced.length, account_id: account.id, region, warnings }
   }
 
@@ -85,7 +85,7 @@ export class LightsailService {
     region = v.region(region)
     const normalized = this.normalizeCreate(data)
     await this.provider.createInstance(account, region, normalized)
-    invalidateAwsCache(this.tags(account.id))
+    invalidateAwsCache(this.mutationTags(account.id))
     try {
       return await this.sync(account.id, region)
     } catch (error) {
@@ -104,7 +104,7 @@ export class LightsailService {
     instanceName = v.instanceName(instanceName)
     const updated = await this.instances.updateRemark(accountId, region, instanceName, remark.trim())
     if (!updated) throw new ApiError('instance_not_found', 'Instance not found', 404, { instance: instanceName })
-    invalidateAwsCache(this.tags(accountId))
+    invalidateAwsCache(this.mutationTags(accountId))
     return updated
   }
 
@@ -138,7 +138,7 @@ export class LightsailService {
       default:
         throw new ApiError('lightsail_action_invalid', 'Invalid Lightsail action', 422, { action })
     }
-    invalidateAwsCache(this.tags(account.id))
+    invalidateAwsCache(this.mutationTags(account.id))
     return `${action} submitted`
   }
 
@@ -176,6 +176,10 @@ export class LightsailService {
   }
 
   private tags(accountId?: string | null) {
-    return accountId ? [`lightsail:${accountId}`, 'lightsail'] : ['lightsail']
+    return accountId ? [`lightsail:${accountId}`] : ['lightsail']
+  }
+
+  private mutationTags(accountId: string) {
+    return [`lightsail:${accountId}`, 'lightsail']
   }
 }

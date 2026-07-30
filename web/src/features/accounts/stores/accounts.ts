@@ -13,12 +13,12 @@ export const useAccountStore = defineStore('accounts', {
     error: null as unknown,
   }),
   actions: {
-    async load(options: { refresh?: boolean } = {}) {
-      if (options.refresh) {
+    async load(options: { force?: boolean } = {}) {
+      if (options.force) {
         accountsPromise = null
         accountsRequestToken += 1
       }
-      if (!options.refresh && this.accounts) return this.accounts
+      if (!options.force && this.accounts) return this.accounts
       if (!accountsPromise) {
         const token = ++accountsRequestToken
         this.loading = true
@@ -61,7 +61,7 @@ export const useAccountStore = defineStore('accounts', {
   },
 })
 
-export async function loadAccounts(options: { refresh?: boolean } = {}) {
+export async function loadAccounts(options: { force?: boolean } = {}) {
   return useAccountStore().load(options)
 }
 
