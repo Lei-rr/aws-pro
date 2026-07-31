@@ -5,6 +5,7 @@ import { scalarString } from '../../lib/utils/scalar.js'
 import { AccountService } from '../account/service.js'
 import { NewbieTaskRepository } from './repository.js'
 import { NewbieTaskRunner } from './runner.js'
+import { NewbieTaskLeaseLostException } from './lease-lost.js'
 
 export class NewbieTaskService {
   private readonly jobs = new Map<string, Promise<void>>()
@@ -189,21 +190,26 @@ export class NewbieTaskService {
         const line = String(message).replace(/%s/g, () => String(args[i++] ?? ''))
         logChain = logChain
           .catch(() => undefined)
-          .then(() => this.tasks.appendLog(id, line))
+          .then(() => this.tasks.appendLog(id, line, workerToken))
       }
-      const operationIds = await this.tasks.ensureOperationIds(id)
+      if (!(await this.tasks.ownsExecution(id, workerToken))) return
+      const operationIds = await this.tasks.ensureOperationIds(id, workerToken)
       await this.runner.run(
         account,
         task.step,
         operationIds,
         appendRunnerLog,
-        async () => this.tasks.cancelRequested(id),
-        async (patch) => this.tasks.patchRuntime(id, patch),
+        async () => {
+          if (!(await this.tasks.ownsExecution(id, workerToken))) throw new NewbieTaskLeaseLostException()
+          return this.tasks.cancelRequested(id)
+        },
+        async (patch) => this.tasks.patchRuntime(id, patch, workerToken),
       )
       await logChain.catch(() => undefined)
       await this.tasks.completeUnlessCancelling(id, workerToken)
     } catch (error) {
       await logChain.catch(() => undefined)
+      if (error instanceof NewbieTaskLeaseLostException) return
       const msg = error instanceof Error ? error.message : String(error)
       await this.tasks.failUnlessCancelling(id, msg, workerToken)
     }

@@ -46,10 +46,6 @@ export function useListPage(options: {
 
   async function runLoad(opts: { refresh?: boolean; silent?: boolean } = {}) {
     // Only explicit user refresh actions pass refresh=true. Mutation follow-up reads remain ordinary.
-    if (opts.silent) {
-      await nextLoad(opts.refresh)
-      return
-    }
     await trackedLoad(opts.refresh)
   }
 

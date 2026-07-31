@@ -1,6 +1,7 @@
 import * as crypto from 'node:crypto'
 import { JsonStore } from '../../lib/storage/json-store.js'
 import type { NewbieTask } from '../../types/aws.js'
+import { NewbieTaskLeaseLostException } from './lease-lost.js'
 
 type StoreShape = { items: NewbieTask[] }
 
@@ -139,23 +140,23 @@ export class NewbieTaskRepository {
     return task?.worker_token === workerToken && ACTIVE.has(task.status)
   }
 
-  async ensureOperationIds(id: string): Promise<Record<string, string>> {
+  async ensureOperationIds(id: string, workerToken: string): Promise<Record<string, string>> {
     const generated = {
       budget: crypto.randomUUID(),
       ec2: crypto.randomUUID(),
       lambda: crypto.randomUUID(),
       rds: crypto.randomUUID(),
     }
-    let result = generated
-    await this.store.transaction((current) => ({
-      next: {
-        items: (current.items ?? []).map((task) => {
-          if (task.id !== id) return task
-          result = { ...generated, ...(task.operation_ids ?? {}) }
-          return { ...task, operation_ids: result, updated_at: Date.now() }
-        }),
-      },
-    }))
+    let result: Record<string, string> | null = null
+    await this.store.transaction((current) => {
+      const items = (current.items ?? []).map((task) => {
+        if (task.id !== id || task.worker_token !== workerToken || !ACTIVE.has(task.status)) return task
+        result = { ...generated, ...(task.operation_ids ?? {}) }
+        return { ...task, operation_ids: result, updated_at: Date.now() }
+      })
+      return { next: { items } }
+    })
+    if (!result) throw new NewbieTaskLeaseLostException()
     return result
   }
 
@@ -210,10 +211,12 @@ export class NewbieTaskRepository {
   async appendLog(id: string, line: string, workerToken?: string): Promise<void> {
     const text = String(line || '').trimEnd()
     if (!text) return
+    let updated = false
     await this.store.transaction((current) => ({
       next: {
         items: (current.items ?? []).map((t) => {
-          if (t.id !== id || (workerToken && t.worker_token !== workerToken)) return t
+          if (t.id !== id || (workerToken && (t.worker_token !== workerToken || !ACTIVE.has(t.status)))) return t
+          updated = true
           const previous = t.logs ?? []
           const logs = [...previous, text].slice(-2000)
           const dropped = Math.max(0, previous.length + 1 - logs.length)
@@ -228,6 +231,7 @@ export class NewbieTaskRepository {
         }),
       },
     }))
+    if (workerToken && !updated) throw new NewbieTaskLeaseLostException()
   }
 
   async patchRuntime(
@@ -235,21 +239,23 @@ export class NewbieTaskRepository {
     patch: Partial<Pick<NewbieTask, 'resources' | 'phase' | 'current_step' | 'progress'>>,
     workerToken?: string,
   ): Promise<void> {
+    let updated = false
     await this.store.transaction((current) => ({
       next: {
-        items: (current.items ?? []).map((task) =>
-          task.id === id && (!workerToken || task.worker_token === workerToken)
-            ? {
-                ...task,
-                ...patch,
-                resources: patch.resources ? { ...(task.resources ?? {}), ...patch.resources } : task.resources,
-                progress: patch.progress == null ? task.progress : Math.max(0, Math.min(100, patch.progress)),
-                updated_at: Date.now(),
-              }
-            : task,
-        ),
+        items: (current.items ?? []).map((task) => {
+          if (task.id !== id || (workerToken && (task.worker_token !== workerToken || !ACTIVE.has(task.status)))) return task
+          updated = true
+          return {
+            ...task,
+            ...patch,
+            resources: patch.resources ? { ...(task.resources ?? {}), ...patch.resources } : task.resources,
+            progress: patch.progress == null ? task.progress : Math.max(0, Math.min(100, patch.progress)),
+            updated_at: Date.now(),
+          }
+        }),
       },
     }))
+    if (workerToken && !updated) throw new NewbieTaskLeaseLostException()
   }
 
   private logStartSeq(task: NewbieTask): number {

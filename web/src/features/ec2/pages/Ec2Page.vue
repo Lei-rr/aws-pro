@@ -293,7 +293,7 @@ onMounted(async () => {
         创建
       </Button>
       <LoadingButton size="sm" :disabled="busy || !accountId || !region" :loading="syncing" @click="sync">
-        <RefreshCw class="size-4" :class="syncing && 'animate-spin'" />
+        <RefreshCw class="size-4" />
         同步
       </LoadingButton>
     </PageHeader>

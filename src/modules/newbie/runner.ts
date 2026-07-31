@@ -166,6 +166,7 @@ export class NewbieTaskRunner {
     const name = `AutoBudget-${this.shortId(operationId, 12)}`
     const budgets = this.clients.budgets(account)
     await checkpoint({ resources: { budget_name: name, aws_account_id: accountId }, phase: 'creating' })
+    await this.ensureNotCancelled(cancelled)
     try {
       await withAwsRetry('create newbie budget', () =>
         budgets.send(
@@ -205,6 +206,7 @@ export class NewbieTaskRunner {
     let id = ''
     try {
       try {
+        await this.ensureNotCancelled(cancelled)
         const result = await withAwsRetry('run newbie EC2 instance', () =>
           client.send(
             new RunInstancesCommand({
@@ -282,6 +284,7 @@ export class NewbieTaskRunner {
 
     const cleanupErrors: unknown[] = []
     await checkpoint({ phase: 'cleaning' })
+    await this.ensureNotCancelled(cancelled)
     try {
       await this.deleteLambdaFunction(lambda, functionName, log)
     } catch (error) {
@@ -319,6 +322,7 @@ export class NewbieTaskRunner {
     let executionError: unknown
     try {
       try {
+        await this.ensureNotCancelled(cancelled)
         const result = await withAwsRetry('create newbie RDS instance', () =>
           rds.send(
             new CreateDBInstanceCommand({
@@ -358,6 +362,7 @@ export class NewbieTaskRunner {
       throw new Error(`RDS creation result is uncertain for ${dbName}; check the AWS console`)
     }
     await checkpoint({ phase: 'cleaning' })
+    await this.ensureNotCancelled(cancelled)
     try {
       await this.cleanupRds(rds, dbName, log)
     } catch (cleanupError) {
