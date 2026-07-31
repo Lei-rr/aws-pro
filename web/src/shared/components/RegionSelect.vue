@@ -16,6 +16,7 @@ const props = withDefaults(
     modelValue?: string
     source?: 'regions' | 'ec2_regions'
     autoSelect?: boolean
+    disabled?: boolean
   }>(),
   { source: 'regions', autoSelect: true },
 )
@@ -58,6 +59,7 @@ watch(
 <template>
   <Select
     :model-value="modelValue || ''"
+    :disabled="disabled"
     @update:model-value="(v) => emit('update:modelValue', String(v || ''))"
   >
     <SelectTrigger class="w-full min-w-[10rem]">

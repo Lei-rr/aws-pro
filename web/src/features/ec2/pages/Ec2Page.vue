@@ -97,17 +97,21 @@ async function sync() {
     toast.warning('已有同步任务正在进行')
     return
   }
+  const scopeAccountId = accountId.value
+  const scopeRegion = region.value
   syncing.value = true
   try {
-    const result = apiObject(await syncScope(accountId.value, region.value)) as {
+    const result = apiObject(await syncScope(scopeAccountId, scopeRegion)) as {
       count?: number
       instances?: AwsInstance[]
       account_id?: string
       region?: string
     }
+    if (scopeAccountId !== accountId.value || scopeRegion !== region.value) return
     patchSyncedScope(result)
     toast.success(`同步完成，共 ${result.count ?? 0} 台 EC2`)
   } catch (e) {
+    if (scopeAccountId !== accountId.value || scopeRegion !== region.value) return
     toast.error(errorMessage(e, '同步 EC2 失败'))
   } finally {
     syncing.value = false
@@ -159,15 +163,17 @@ async function operate(row: AwsInstance, action: string) {
   await runAction(row, action)
 }
 
-async function syncAfterAction(accountId: string, targetRegion: string) {
+async function syncAfterAction(scopeAccountId: string, targetRegion: string) {
   try {
-    const result = apiObject(await syncScope(accountId, targetRegion)) as {
+    const result = apiObject(await syncScope(scopeAccountId, targetRegion)) as {
       instances?: AwsInstance[]
       account_id?: string
       region?: string
     }
+    if (scopeAccountId !== accountId.value || targetRegion !== region.value) return
     patchSyncedScope(result)
   } catch (error) {
+    if (scopeAccountId !== accountId.value || targetRegion !== region.value) return
     toast.warning(errorMessage(error, '操作已提交，但同步列表失败'))
   }
 }
@@ -282,8 +288,8 @@ onMounted(async () => {
 <template>
   <div class="flex flex-1 flex-col gap-4">
     <PageHeader title="EC2" description="实例列表、同步、创建与运维操作">
-      <div class="w-44"><AccountSelect v-model="accountId" /></div>
-      <div class="w-48"><RegionSelect v-model="region" source="ec2_regions" /></div>
+      <div class="w-44"><AccountSelect v-model="accountId" :disabled="syncing || !!actionLoadingKey" /></div>
+      <div class="w-48"><RegionSelect v-model="region" source="ec2_regions" :disabled="syncing || !!actionLoadingKey" /></div>
       <Button size="sm" variant="outline" :disabled="busy" @click="copyInstanceList">
         <Copy class="size-4" />
         一键复制
