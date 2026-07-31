@@ -6,6 +6,6 @@ import { ConfirmHost } from '@/shared/ui/confirm'
 
 <template>
   <RouterView />
-  <Toaster position="top-center" :close-button="true" close-button-position="top-right" />
+  <Toaster position="top-center" :close-button="true" />
   <ConfirmHost />
 </template>

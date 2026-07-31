@@ -56,7 +56,7 @@ function toggleDark() {
   <div class="bg-background relative flex min-h-svh flex-col">
     <header class="bg-background sticky top-0 z-50 w-full">
       <div
-        class="mx-auto flex h-14 w-full max-w-none min-w-0 items-center gap-2 px-4 sm:h-16 sm:px-6 md:w-[80vw] md:px-0"
+        class="mx-auto flex h-14 w-full max-w-none min-w-0 items-center gap-1.5 px-3 sm:h-16 sm:gap-2 sm:px-6 md:w-[80vw] md:px-0"
       >
         <RouterLink to="/" class="mr-1 flex shrink-0 items-center gap-2 text-[15px] font-semibold tracking-tight">
           <span class="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-md text-sm font-bold">A</span>
@@ -131,12 +131,14 @@ function toggleDark() {
       </div>
     </header>
 
-    <main class="mx-auto w-full flex-1 px-4 py-4 sm:px-6 md:w-[80vw] md:px-0 md:py-6">
-      <RouterView v-slot="{ Component }">
-        <Transition name="page-fade" mode="out-in">
-          <component :is="Component" />
-        </Transition>
-      </RouterView>
+    <main class="flex flex-1 flex-col">
+      <div class="mx-auto w-full max-w-none min-w-0 flex-1 px-3 pt-4 pb-8 sm:px-6 sm:pt-6 sm:pb-10 md:w-[80vw] md:px-0 md:pb-12">
+        <RouterView v-slot="{ Component, route: currentRoute }">
+          <Transition name="page-fade" mode="out-in">
+            <component :is="Component" :key="currentRoute.fullPath" />
+          </Transition>
+        </RouterView>
+      </div>
     </main>
   </div>
 </template>

@@ -25,16 +25,18 @@ const items = ref<QuotaRow[]>([])
 const { loading, refreshing, pageSize, runLoad, onRefresh, onPageSizeChange, fail } = useListPage({
   pageSizeScope: 'aws-quota',
   load: async (options = {}) => {
-    if (!accountId.value || !region.value) return
+    const scopeAccountId = accountId.value
+    const scopeRegion = region.value
+    if (!scopeAccountId || !scopeRegion) return
     try {
       const response = await quotaApi.vcpu(
-        { account_id: accountId.value, region: region.value },
+        { account_id: scopeAccountId, region: scopeRegion },
         { refresh: options.refresh, cacheOnly: !options.refresh },
       )
-      if (options.isLatest && !options.isLatest()) return false
+      if ((options.isLatest && !options.isLatest()) || scopeAccountId !== accountId.value || scopeRegion !== region.value) return false
       items.value = apiList<QuotaRow>(response, ['items'])
     } catch (e) {
-      if (options.isLatest && !options.isLatest()) return false
+      if ((options.isLatest && !options.isLatest()) || scopeAccountId !== accountId.value || scopeRegion !== region.value) return false
       fail(e)
       return false
     }
@@ -72,7 +74,7 @@ onMounted(() => {
       </Button>
     </PageHeader>
 
-    <TableLoading :loading="loading" :empty="!items.length">
+    <TableLoading :loading="loading" :refreshing="refreshing" :empty="!items.length">
       <Table>
         <TableHeader class="bg-muted/50">
           <TableRow class="!border-0">

@@ -26,6 +26,7 @@ import type { AwsInstance } from '@/shared/types'
 const props = withDefaults(
   defineProps<{
     loading?: boolean
+    refreshing?: boolean
     instances?: AwsInstance[]
     regions?: Record<string, string>
     packageKey: string
@@ -38,6 +39,7 @@ const props = withDefaults(
   }>(),
   {
     loading: false,
+    refreshing: false,
     instances: () => [],
     regions: () => ({}),
     packageLabel: undefined,
@@ -158,7 +160,7 @@ function regionLabel(id?: string) {
       </Select>
     </div>
 
-    <TableLoading :loading="loading" :empty="!filtered.length">
+    <TableLoading :loading="loading" :refreshing="refreshing" :empty="!filtered.length">
       <Table>
         <TableHeader class="bg-muted/50">
           <TableRow class="!border-0">

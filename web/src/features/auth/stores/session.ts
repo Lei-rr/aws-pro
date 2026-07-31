@@ -20,7 +20,7 @@ export const useSessionStore = defineStore('session', () => {
   let requestToken = 0
 
   async function load(options: { refresh?: boolean } = {}) {
-    if (options.refresh) {
+    if (options.refresh && pendingSession) {
       pendingSession = null
       requestToken += 1
     }

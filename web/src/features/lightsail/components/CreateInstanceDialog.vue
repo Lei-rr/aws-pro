@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { AppDialog } from '@/shared/ui/dialog'
-import { Button } from '@/shared/ui/button'
-import { Field, FieldGroup, FieldLabel } from '@/shared/ui/field'
+import { Button, LoadingButton } from '@/shared/ui/button'
+import { Field, FieldError, FieldGroup, FieldLabel } from '@/shared/ui/field'
 import { Input } from '@/shared/ui/input'
 import {
   Select,
@@ -30,6 +30,8 @@ const emit = defineEmits<{ created: [] }>()
 
 const loading = ref(false)
 const creating = ref(false)
+const optionsError = ref('')
+let optionsRequestToken = 0
 const createOptions = ref<{ zones: string[]; bundles: Record<string, string>; bundle_items: BundleItem[] }>({
   zones: [],
   bundles: {},
@@ -65,12 +67,17 @@ function ensureBundle() {
 
 async function loadOptions() {
   if (!props.accountId || !props.region) return
+  const token = ++optionsRequestToken
+  const scopeAccountId = props.accountId
+  const scopeRegion = props.region
+  optionsError.value = ''
   loading.value = true
   try {
     const response = await lightsailApi.createOptions({
-      account_id: props.accountId,
-      region: props.region,
+      account_id: scopeAccountId,
+      region: scopeRegion,
     })
+    if (token !== optionsRequestToken || !open.value || scopeAccountId !== props.accountId || scopeRegion !== props.region) return
     createOptions.value = apiObject(response) as typeof createOptions.value
     form.value.zone = createOptions.value.zones?.[0] || ''
     if (!form.value.blueprint) {
@@ -78,14 +85,20 @@ async function loadOptions() {
     }
     ensureBundle()
   } catch (e) {
-    toast.error(errorMessage(e, '加载创建配置失败'))
+    if (token !== optionsRequestToken || !open.value || scopeAccountId !== props.accountId || scopeRegion !== props.region) return
+    createOptions.value = { zones: [], bundles: {}, bundle_items: [] }
+    optionsError.value = errorMessage(e, '加载创建配置失败')
   } finally {
-    loading.value = false
+    if (token === optionsRequestToken) loading.value = false
   }
 }
 
 watch(open, (v) => {
-  if (!v) return
+  if (!v) {
+    optionsRequestToken += 1
+    loading.value = false
+    return
+  }
   form.value = {
     name: '',
     zone: '',
@@ -95,6 +108,7 @@ watch(open, (v) => {
     root_password: '',
   }
   createOptions.value = { zones: [], bundles: {}, bundle_items: [] }
+  optionsError.value = ''
   void loadOptions()
 })
 
@@ -140,6 +154,10 @@ async function submit() {
     class="sm:max-w-lg"
   >
     <FieldGroup class="gap-3">
+      <FieldError v-if="optionsError" class="flex items-center gap-1.5">
+        <span>{{ optionsError }}</span>
+        <Button type="button" variant="link" size="sm" class="h-auto px-0" @click="loadOptions">重试</Button>
+      </FieldError>
       <Field>
         <FieldLabel>实例名</FieldLabel>
         <Input v-model="form.name" placeholder="例如 web-01" :disabled="loading || creating" />
@@ -196,7 +214,7 @@ async function submit() {
     </FieldGroup>
     <template #footer>
       <Button variant="outline" :disabled="creating" @click="open = false">取消</Button>
-      <Button :loading="creating || loading" @click="submit">创建</Button>
+      <LoadingButton :loading="creating || loading" :disabled="!!optionsError" @click="submit">创建</LoadingButton>
     </template>
   </AppDialog>
 </template>

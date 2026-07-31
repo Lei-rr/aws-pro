@@ -29,13 +29,14 @@ const summary = ref({ total_cost: 0, total_credit: 0 })
 const { loading, refreshing, pageSize, runLoad, onRefresh, onPageSizeChange, fail } = useListPage({
   pageSizeScope: 'aws-billing',
   load: async (options = {}) => {
-    if (!accountId.value) return
+    const scopeAccountId = accountId.value
+    if (!scopeAccountId) return
     try {
       const response = await billingApi.yearly(
-        { account_id: accountId.value },
+        { account_id: scopeAccountId },
         { refresh: options.refresh, cacheOnly: !options.refresh },
       )
-      if (options.isLatest && !options.isLatest()) return false
+      if ((options.isLatest && !options.isLatest()) || scopeAccountId !== accountId.value) return false
       const billing = apiObject(response) as {
         items?: BillRow[]
         total_cost?: number
@@ -47,7 +48,7 @@ const { loading, refreshing, pageSize, runLoad, onRefresh, onPageSizeChange, fai
         total_credit: billing.total_credit || 0,
       }
     } catch (e) {
-      if (options.isLatest && !options.isLatest()) return false
+      if ((options.isLatest && !options.isLatest()) || scopeAccountId !== accountId.value) return false
       fail(e)
       return false
     }
@@ -106,7 +107,7 @@ onMounted(() => {
       </Button>
     </PageHeader>
 
-    <TableLoading :loading="loading" :empty="!tableRows.length">
+    <TableLoading :loading="loading" :refreshing="refreshing" :empty="!tableRows.length">
       <Table>
         <TableHeader class="bg-muted/50">
           <TableRow class="!border-0">

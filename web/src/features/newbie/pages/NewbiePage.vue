@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { PageHeader } from '@/shared/ui/page-header'
-import { Button } from '@/shared/ui/button'
+import { Button, LoadingButton } from '@/shared/ui/button'
 import {
   Select,
   SelectContent,
@@ -357,9 +357,9 @@ onBeforeUnmount(() => stopWatching())
         <Field class="sm:col-span-2 lg:col-span-1">
           <FieldLabel class="opacity-0 max-lg:hidden">操作</FieldLabel>
           <div class="flex flex-wrap items-center gap-2">
-            <Button size="sm" :loading="loading" :disabled="!canStart || loading" @click="confirmStart">
+            <LoadingButton size="sm" :loading="loading" :disabled="!canStart || loading" @click="confirmStart">
               {{ loading ? '创建中…' : '开始执行' }}
-            </Button>
+            </LoadingButton>
             <Button
               size="sm"
               variant="outline"

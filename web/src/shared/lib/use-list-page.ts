@@ -10,7 +10,10 @@ type LoadContext = {
 
 type LoadFn = (options?: LoadContext) => Promise<boolean | void>
 
-/** Shared list-page loading, stale-response and explicit-refresh semantics. */
+/**
+ * Shared list-page chrome: loading/refresh flags, pageSize memory, refresh action.
+ * Feature pages still own their data fetch inside `load`.
+ */
 export function useListPage(options: {
   pageSizeScope: string
   defaultPageSize?: number

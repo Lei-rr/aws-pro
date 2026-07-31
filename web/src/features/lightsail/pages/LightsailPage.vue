@@ -8,7 +8,7 @@ import InstanceActionSelect from '@/features/lightsail/components/InstanceAction
 import InstanceIpCell from '@/features/lightsail/components/InstanceIpCell.vue'
 import CreateInstanceDialog from '@/features/lightsail/components/CreateInstanceDialog.vue'
 import { PageHeader } from '@/shared/ui/page-header'
-import { Button } from '@/shared/ui/button'
+import { Button, LoadingButton } from '@/shared/ui/button'
 import { lightsailApi } from '@/features/lightsail/api/lightsail'
 import { loadConfig, useConfigStore } from '@/features/config/stores/config'
 import { apiList, apiObject } from '@/shared/api/http'
@@ -35,18 +35,20 @@ function patchSyncedScope(result: { instances?: AwsInstance[]; account_id?: stri
   ]
 }
 
-const { loading, runLoad, fail } = useListPage({
+const { loading, refreshing, runLoad, fail } = useListPage({
   pageSizeScope: 'aws-lightsail',
   load: async (options = {}) => {
+    const scopeAccountId = accountId.value
+    const scopeRegion = region.value
     try {
       const response = await lightsailApi.instances({
-        ...(accountId.value ? { account_id: accountId.value } : {}),
-        ...(region.value ? { region: region.value } : {}),
+        ...(scopeAccountId ? { account_id: scopeAccountId } : {}),
+        ...(scopeRegion ? { region: scopeRegion } : {}),
       })
-      if (options.isLatest && !options.isLatest()) return false
+      if ((options.isLatest && !options.isLatest()) || scopeAccountId !== accountId.value || scopeRegion !== region.value) return false
       instances.value = apiList<AwsInstance>(response, ['items'])
     } catch (e) {
-      if (options.isLatest && !options.isLatest()) return false
+      if ((options.isLatest && !options.isLatest()) || scopeAccountId !== accountId.value || scopeRegion !== region.value) return false
       fail(e)
       return false
     }
@@ -306,14 +308,15 @@ onMounted(async () => {
         <Plus class="size-4" />
         创建
       </Button>
-      <Button size="sm" :disabled="busy || !accountId || !region" :loading="syncing" @click="sync">
+      <LoadingButton size="sm" :disabled="busy || !accountId || !region" :loading="syncing" @click="sync">
         <RefreshCw class="size-4" :class="syncing && 'animate-spin'" />
         同步
-      </Button>
+      </LoadingButton>
     </PageHeader>
 
     <CloudInstanceTable
       :loading="loading"
+      :refreshing="refreshing"
       :instances="instances"
       :regions="regions"
       package-key="bundle_id"

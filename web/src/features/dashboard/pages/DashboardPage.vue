@@ -116,7 +116,7 @@ onMounted(() => runLoad())
       </div>
     </div>
 
-    <TableLoading :loading="loading" :empty="!accountRegionSummary.length">
+    <TableLoading :loading="loading" :refreshing="refreshing" :empty="!accountRegionSummary.length">
       <div>
         <div class="mb-3">
           <h2 class="text-base font-semibold">账号与区域资源分布</h2>

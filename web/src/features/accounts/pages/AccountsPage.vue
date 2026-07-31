@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { Plus, RefreshCw } from '@lucide/vue'
 import { PageHeader } from '@/shared/ui/page-header'
-import { Button } from '@/shared/ui/button'
+import { Button, LoadingButton } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableLoading } from '@/shared/ui/table'
 import { TablePagination } from '@/shared/ui/pagination'
@@ -160,7 +160,7 @@ onMounted(() => runLoad())
       <Input v-model="keyword" class="h-8 w-full sm:w-72" placeholder="搜索服务商" />
     </div>
 
-    <TableLoading :loading="loading" :empty="!filtered.length">
+    <TableLoading :loading="loading" :refreshing="refreshing" :empty="!filtered.length">
       <Table :key="tableKey">
         <TableHeader class="bg-muted/50">
           <TableRow class="!border-0">
@@ -232,7 +232,7 @@ onMounted(() => runLoad())
       </FieldGroup>
       <template #footer>
         <Button variant="outline" @click="dialogOpen = false">取消</Button>
-        <Button :loading="saving" @click="save">保存</Button>
+        <LoadingButton :loading="saving" @click="save">保存</LoadingButton>
       </template>
     </AppDialog>
   </div>

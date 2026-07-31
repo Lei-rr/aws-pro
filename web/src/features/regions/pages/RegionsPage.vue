@@ -36,16 +36,17 @@ const configStore = useConfigStore()
 const { loading, refreshing, pageSize, runLoad, onRefresh, onPageSizeChange, fail } = useListPage({
   pageSizeScope: 'aws-regions',
   load: async (options = {}) => {
-    if (!accountId.value) return
+    const scopeAccountId = accountId.value
+    if (!scopeAccountId) return
     try {
-      const response = await regionsApi.list(accountId.value, {
+      const response = await regionsApi.list(scopeAccountId, {
         refresh: options.refresh,
         cacheOnly: !options.refresh,
       })
-      if (options.isLatest && !options.isLatest()) return false
+      if ((options.isLatest && !options.isLatest()) || scopeAccountId !== accountId.value) return false
       items.value = apiList<RegionRow>(response, ['items'])
     } catch (e) {
-      if (options.isLatest && !options.isLatest()) return false
+      if ((options.isLatest && !options.isLatest()) || scopeAccountId !== accountId.value) return false
       fail(e)
       return false
     }
@@ -123,7 +124,7 @@ onMounted(async () => {
       </Button>
     </PageHeader>
 
-    <TableLoading :loading="loading" :empty="!items.length">
+    <TableLoading :loading="loading" :refreshing="refreshing" :empty="!items.length">
       <Table>
         <TableHeader class="bg-muted/50">
           <TableRow class="!border-0">

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Button } from '@/shared/ui/button'
+import { LoadingButton } from '@/shared/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card'
 import { Field, FieldGroup, FieldLabel } from '@/shared/ui/field'
 import { Input } from '@/shared/ui/input'
@@ -58,9 +58,9 @@ async function submit() {
                   <Input id="password" v-model="password" type="password" placeholder="请输入密码" autocomplete="current-password" required />
                 </Field>
                 <Field>
-                  <Button type="submit" class="w-full" :loading="loading" :disabled="!username.trim() || !password">
+                  <LoadingButton type="submit" class="w-full" :loading="loading" :disabled="!username.trim() || !password">
                     登录
-                  </Button>
+                  </LoadingButton>
                 </Field>
               </FieldGroup>
             </form>
