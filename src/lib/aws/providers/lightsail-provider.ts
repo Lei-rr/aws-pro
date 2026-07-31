@@ -22,6 +22,7 @@ import { ApiError } from '../../http/api-error.js'
 import { AwsClientFactory } from '../client-factory.js'
 import { awsCall } from '../errors.js'
 import { withAwsRetry } from '../retry.js'
+import { providerString } from '../../utils/scalar.js'
 
 function rootPasswordUserData(password: string) {
   const encoded = Buffer.from(password, 'utf8').toString('base64')
@@ -96,17 +97,18 @@ export class LightsailProvider {
           client.send(new GetInstancesCommand({ pageToken: instanceToken })),
         )
         for (const item of result?.instances ?? []) {
-          const name = String(item.name ?? '')
+          const name = providerString(item.name)
+          if (!name) continue
           instances.push({
             account_id: account.id,
             region,
             name,
-            state: String(item.state?.name ?? ''),
-            public_ip: item.publicIpAddress ?? '',
+            state: providerString(item.state?.name),
+            public_ip: providerString(item.publicIpAddress),
             static_ip: staticIps[name] ?? '',
-            ipv6: item.ipv6Addresses?.[0] ?? '',
-            zone: item.location?.availabilityZone ?? '',
-            bundle_id: String(item.bundleId ?? ''),
+            ipv6: providerString(item.ipv6Addresses?.[0]),
+            zone: providerString(item.location?.availabilityZone),
+            bundle_id: providerString(item.bundleId),
           })
         }
         instanceToken = result?.nextPageToken
@@ -200,7 +202,7 @@ export class LightsailProvider {
     const result = await withAwsRetry('get Lightsail instance before static IP allocation', () =>
       client.send(new GetInstanceCommand({ instanceName })),
     )
-    const publicIp = String((result as any)?.instance?.publicIpAddress ?? '')
+    const publicIp = providerString((result as any)?.instance?.publicIpAddress)
     if (!publicIp) {
       throw new ApiError('lightsail_static_ip_unavailable', 'IPv6-only Lightsail instances cannot bind a static IPv4 address', 422, {
         instance: instanceName,
@@ -215,7 +217,7 @@ export class LightsailProvider {
         client.send(new GetStaticIpsCommand({ pageToken })),
       )
       for (const ip of result?.staticIps ?? []) {
-        if (ip.attachedTo === instanceName && ip.isAttached !== false) return String(ip.name ?? '')
+        if (ip.attachedTo === instanceName && ip.isAttached !== false) return providerString(ip.name)
       }
       pageToken = result?.nextPageToken
     } while (pageToken)

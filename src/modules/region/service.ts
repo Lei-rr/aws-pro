@@ -8,15 +8,16 @@ import {
   type CacheReadMode,
 } from '../../lib/cache/aws-cache.js'
 import * as v from '../../lib/utils/aws-validator.js'
+import { scalarString } from '../../lib/utils/scalar.js'
 import { AccountService } from '../account/service.js'
 import { RegionProvider } from '../../lib/aws/providers/region-provider.js'
-import { SystemConfigRepository } from '../system/config-repository.js'
+import { SystemConfigService } from '../system/config-repository.js'
 
 export class RegionService {
   constructor(
     private readonly accounts: AccountService,
     private readonly provider: RegionProvider,
-    private readonly config: SystemConfigRepository,
+    private readonly config: SystemConfigService,
   ) {}
 
   async configuredRegions() {
@@ -45,8 +46,8 @@ export class RegionService {
 
   async enable(body: Record<string, unknown>) {
     v.required(body, ['account_id', 'region'])
-    const accountId = v.accountId(String(body.account_id))
-    const region = v.region(String(body.region))
+    const accountId = v.accountId(scalarString(body.account_id))
+    const region = v.region(scalarString(body.region))
     const configured = await this.configuredRegions()
     if (!configured[region]) throw new ApiError('region_not_configured', 'Region is not configured', 422, { region })
     const account = await this.accounts.requireAccount(accountId)

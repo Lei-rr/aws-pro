@@ -3,6 +3,7 @@ import { GetCostAndUsageCommand } from '@aws-sdk/client-cost-explorer'
 import type { AwsAccount } from '../../../types/aws.js'
 import { AwsClientFactory } from '../client-factory.js'
 import { awsCall } from '../errors.js'
+import { providerFiniteNumber, providerString } from '../../utils/scalar.js'
 
 function ymd(d: Date) {
   return d.toISOString().slice(0, 10)
@@ -24,12 +25,13 @@ export class BillingProvider {
         Granularity: 'MONTHLY' as const,
         Metrics: ['UnblendedCost'],
       }
-      const costs: Record<string, string> = {}
-      const credits: Record<string, string> = {}
+      const costs: Record<string, number> = {}
+      const credits: Record<string, number> = {}
       const costResult = await client.send(new GetCostAndUsageCommand(base))
       for (const row of costResult.ResultsByTime ?? []) {
-        const month = String(row.TimePeriod?.Start ?? '').slice(0, 7)
-        costs[month] = String(row.Total?.UnblendedCost?.Amount ?? '0')
+        const month = providerString(row.TimePeriod?.Start).slice(0, 7)
+        if (!month) continue
+        costs[month] = providerFiniteNumber(row.Total?.UnblendedCost?.Amount)
       }
       const creditResult = await client.send(
         new GetCostAndUsageCommand({
@@ -38,15 +40,16 @@ export class BillingProvider {
         }),
       )
       for (const row of creditResult.ResultsByTime ?? []) {
-        const month = String(row.TimePeriod?.Start ?? '').slice(0, 7)
-        credits[month] = String(row.Total?.UnblendedCost?.Amount ?? '0')
+        const month = providerString(row.TimePeriod?.Start).slice(0, 7)
+        if (!month) continue
+        credits[month] = providerFiniteNumber(row.Total?.UnblendedCost?.Amount)
       }
       const months = Array.from(new Set([...Object.keys(costs), ...Object.keys(credits)])).sort().reverse()
       return months.map((month) => ({
         account_id: account.id,
         month,
-        cost: costs[month] ?? '0',
-        credit: credits[month] ?? '0',
+        cost: costs[month] ?? 0,
+        credit: credits[month] ?? 0,
         unit: 'USD',
       }))
     })

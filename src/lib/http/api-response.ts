@@ -1,11 +1,9 @@
-import type { SideEffects } from '../utils/side-effect-result.js'
 import { translateError } from './error-messages.js'
 
 export interface SuccessResponseBody<T = unknown> {
   code: 0
   message: 'success'
   data: T
-  side_effects?: SideEffects
 }
 
 export interface ErrorResponseBody {
@@ -17,12 +15,11 @@ export interface ErrorResponseBody {
 
 export type ApiResponseBody<T = unknown> = SuccessResponseBody<T> | ErrorResponseBody
 
-export function success<T>(data: T, sideEffects?: SideEffects): SuccessResponseBody<T> {
+export function success<T>(data: T): SuccessResponseBody<T> {
   return {
     code: 0,
     message: 'success',
     data,
-    side_effects: sideEffects,
   }
 }
 

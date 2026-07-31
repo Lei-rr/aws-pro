@@ -3,6 +3,7 @@ import { GetServiceQuotaCommand } from '@aws-sdk/client-service-quotas'
 import type { AwsAccount } from '../../../types/aws.js'
 import { AwsClientFactory } from '../client-factory.js'
 import { awsCall } from '../errors.js'
+import { providerFiniteNumber, providerString } from '../../utils/scalar.js'
 
 const CODES: Record<string, string> = {
   'L-1216C47A': 'On-Demand Standard vCPU',
@@ -22,8 +23,8 @@ export class QuotaProvider {
         items.push({
           account_id: account.id,
           region,
-          name: quota.QuotaName ?? fallbackName,
-          value: quota.Value ?? '',
+          name: providerString(quota.QuotaName, fallbackName),
+          value: providerFiniteNumber(quota.Value),
         })
       }
       return items

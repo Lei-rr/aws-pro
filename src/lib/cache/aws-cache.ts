@@ -28,9 +28,14 @@ export function parseCacheMode(input: {
   cache_only?: unknown
   cacheOnly?: unknown
 }): Required<CacheReadMode> {
-  const refresh = Boolean(input.refresh)
-  const cacheOnly = Boolean(input.cache_only ?? input.cacheOnly)
-  return { refresh, cacheOnly }
+  const flag = (value: unknown) =>
+    value === true ||
+    value === 1 ||
+    (typeof value === 'string' && ['1', 'true'].includes(value.trim().toLowerCase()))
+  return {
+    refresh: flag(input.refresh),
+    cacheOnly: flag(input.cache_only ?? input.cacheOnly),
+  }
 }
 
 export function awsAccountTag(accountId: string): string {

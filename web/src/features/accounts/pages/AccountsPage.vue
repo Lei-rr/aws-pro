@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { Plus, RefreshCw, EllipsisVertical } from '@lucide/vue'
+import { Plus, RefreshCw } from '@lucide/vue'
 import { PageHeader } from '@/shared/ui/page-header'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
@@ -8,12 +8,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableLoa
 import { TablePagination } from '@/shared/ui/pagination'
 import { AppDialog } from '@/shared/ui/dialog'
 import { Field, FieldGroup, FieldLabel } from '@/shared/ui/field'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/shared/ui/dropdown-menu'
 import { accountApi } from '@/features/accounts/api/accounts'
 import { clearAccountsCache } from '@/features/accounts/stores/accounts'
 import { apiList, apiObject } from '@/shared/api/http'
@@ -40,7 +34,6 @@ const { loading, refreshing, pageSize, runLoad, onRefresh, onPageSizeChange, fai
       setAccounts(apiList<Account>(response))
     } catch (e) {
       if (options.isLatest && !options.isLatest()) return false
-      setAccounts([])
       fail(e)
       return false
     }
@@ -95,8 +88,9 @@ async function save() {
   saving.value = true
   try {
     const payload: Partial<Account> & { original_id?: string } = { ...form }
-    if (payload.original_id && !payload.secret_key) delete payload.secret_key
-    const response = await accountApi.save(payload)
+    delete payload.original_id
+    if (form.original_id && !payload.secret_key) delete payload.secret_key
+    const response = await accountApi.save(form.original_id ? { ...payload, original_id: form.original_id } : payload)
     const saved = apiObject<Account>(response, { id: '', access_key: '' })
     if (form.original_id) {
       setAccounts(
@@ -174,7 +168,7 @@ onMounted(() => runLoad())
             <TableHead>Access Key</TableHead>
             <TableHead>Secret Key</TableHead>
             <TableHead>备注</TableHead>
-            <TableHead class="rounded-r-lg w-12" />
+            <TableHead class="rounded-r-lg w-28">操作</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody class="**:data-[slot=table-cell]:py-2.5">
@@ -186,20 +180,13 @@ onMounted(() => runLoad())
             <TableCell class="max-w-[14rem] truncate" :title="record.access_key">{{ record.access_key || '—' }}</TableCell>
             <TableCell>{{ record.secret_key_masked || '—' }}</TableCell>
             <TableCell class="text-muted-foreground max-w-[10rem] truncate">{{ record.remark || '—' }}</TableCell>
-            <TableCell>
-              <DropdownMenu>
-                <DropdownMenuTrigger as-child>
-                  <Button variant="ghost" size="icon" class="size-8" :disabled="deletingId === record.id">
-                    <EllipsisVertical class="size-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem :disabled="deletingId === record.id" @click="openEdit(record)">编辑</DropdownMenuItem>
-                  <DropdownMenuItem variant="destructive" :disabled="deletingId === record.id" @click="remove(record)">
-                    删除
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+            <TableCell class="whitespace-nowrap">
+              <Button variant="link" size="sm" class="h-auto px-0" :disabled="!!deletingId" @click="openEdit(record)">
+                编辑
+              </Button>
+              <Button variant="link" size="sm" class="text-destructive h-auto px-2" :disabled="!!deletingId" @click="remove(record)">
+                {{ deletingId === record.id ? '删除中' : '删除' }}
+              </Button>
             </TableCell>
           </TableRow>
         </TableBody>
@@ -223,7 +210,7 @@ onMounted(() => runLoad())
       <FieldGroup>
         <Field>
           <FieldLabel>服务商 ID</FieldLabel>
-          <Input v-model="form.id" placeholder="自定义标识" />
+          <Input v-model="form.id" placeholder="自定义标识" :disabled="!!form.original_id" />
         </Field>
         <Field>
           <FieldLabel>Access Key</FieldLabel>

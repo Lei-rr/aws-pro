@@ -6,7 +6,7 @@ export type { AppConfigData }
  * Panel catalog config (region labels / blueprints).
  * Source of truth is built-in defaults only — no data/app-config.json.
  */
-export class SystemConfigRepository {
+export class SystemConfigService {
   async read(): Promise<AppConfigData> {
     return {
       regions: { ...BUILTIN_APP_CONFIG.regions },

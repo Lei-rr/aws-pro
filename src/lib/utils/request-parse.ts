@@ -1,4 +1,5 @@
 import { parseBool } from './parse-bool.js'
+import { scalarString } from './scalar.js'
 
 export function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
@@ -15,7 +16,7 @@ export function bodyRecord(request: { body?: unknown }): Record<string, unknown>
 export function queryString(query: Record<string, unknown>, key: string, fallback = ''): string {
   const value = query[key]
   if (value === undefined || value === null) return fallback
-  return String(value).trim()
+  return scalarString(value, fallback)
 }
 
 export function queryInt(query: Record<string, unknown>, key: string, fallback: number, min = 0, max = 10000): number {
@@ -32,5 +33,5 @@ export function queryBool(query: Record<string, unknown>, key: string, fallback 
 export function bodyString(body: Record<string, unknown>, key: string, fallback = ''): string {
   const value = body[key]
   if (value === undefined || value === null) return fallback
-  return String(value).trim()
+  return scalarString(value, fallback)
 }

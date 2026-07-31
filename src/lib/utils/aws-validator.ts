@@ -3,7 +3,12 @@ import { ApiError } from '../http/api-error.js'
 export function required(data: Record<string, unknown>, fields: string[]): void {
   for (const field of fields) {
     const value = data[field]
-    if (value === undefined || value === null || String(value).trim() === '') {
+    if (
+      value === undefined ||
+      value === null ||
+      (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') ||
+      String(value).trim() === ''
+    ) {
       throw new ApiError('field_required', `${field} is required`, 422, { field })
     }
   }

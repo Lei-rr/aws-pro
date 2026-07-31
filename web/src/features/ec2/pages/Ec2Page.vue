@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { Copy, Plus, RefreshCw } from '@lucide/vue'
 import { AccountSelect, RegionSelect } from '@/shared/components'
 import CloudInstanceTable from '@/shared/components/CloudInstanceTable.vue'
@@ -27,16 +27,26 @@ const accountId = ref('')
 const region = ref('')
 const instances = ref<AwsInstance[]>([])
 
+function patchSyncedScope(result: { instances?: AwsInstance[]; account_id?: string; region?: string }) {
+  if (!Array.isArray(result.instances) || !result.account_id || !result.region) return
+  instances.value = [
+    ...instances.value.filter((item) => item.account_id !== result.account_id || item.region !== result.region),
+    ...result.instances,
+  ]
+}
+
 const { loading, runLoad, fail } = useListPage({
   pageSizeScope: 'aws-ec2',
   load: async (options = {}) => {
     try {
-      const response = await ec2Api.instances()
+      const response = await ec2Api.instances({
+        ...(accountId.value ? { account_id: accountId.value } : {}),
+        ...(region.value ? { region: region.value } : {}),
+      })
       if (options.isLatest && !options.isLatest()) return false
       instances.value = apiList<AwsInstance>(response, ['items'])
     } catch (e) {
       if (options.isLatest && !options.isLatest()) return false
-      instances.value = []
       fail(e)
       return false
     }
@@ -58,6 +68,11 @@ const regions = computed(
   () => (configStore.config?.ec2_regions || configStore.config?.regions || {}) as Record<string, string>,
 )
 const busy = computed(() => loading.value || syncing.value || !!actionLoadingKey.value)
+
+watch([accountId, region], () => {
+  instances.value = []
+  if (accountId.value && region.value) void runLoad({ silent: true })
+})
 
 function rowKey(row: AwsInstance) {
   return `${row.account_id}:${row.region}:${row.id}`
@@ -82,9 +97,14 @@ async function sync() {
   }
   syncing.value = true
   try {
-    const result = apiObject(await syncScope(accountId.value, region.value)) as { count?: number }
+    const result = apiObject(await syncScope(accountId.value, region.value)) as {
+      count?: number
+      instances?: AwsInstance[]
+      account_id?: string
+      region?: string
+    }
+    patchSyncedScope(result)
     toast.success(`同步完成，共 ${result.count ?? 0} 台 EC2`)
-    await runLoad()
   } catch (e) {
     toast.error(errorMessage(e, '同步 EC2 失败'))
   } finally {
@@ -93,7 +113,7 @@ async function sync() {
 }
 
 async function onCreated() {
-  await runLoad()
+  await runLoad({ silent: true })
 }
 
 const ACTION_NAMES: Record<string, string> = {
@@ -116,6 +136,10 @@ const ACTION_RISKS: Record<string, string> = {
 }
 
 async function operate(row: AwsInstance, action: string) {
+  if (action === 'remark') {
+    openRemark(row)
+    return
+  }
   if (syncing.value) {
     toast.warning('已有同步任务正在进行')
     return
@@ -135,8 +159,12 @@ async function operate(row: AwsInstance, action: string) {
 
 async function syncAfterAction(accountId: string, targetRegion: string) {
   try {
-    await syncScope(accountId, targetRegion)
-    await runLoad()
+    const result = apiObject(await syncScope(accountId, targetRegion)) as {
+      instances?: AwsInstance[]
+      account_id?: string
+      region?: string
+    }
+    patchSyncedScope(result)
   } catch (error) {
     toast.warning(errorMessage(error, '操作已提交，但同步列表失败'))
   }
@@ -163,6 +191,9 @@ async function runAction(row: AwsInstance, action: string) {
     })
     toast.dismiss(loadingToastId)
     toast.success((apiObject(response) as { message?: string }).message || `${name}已提交`)
+    if (action === 'terminate') {
+      instances.value = instances.value.filter((item) => rowKey(item) !== rowKey(row))
+    }
     await syncAfterAction(String(row.account_id), String(row.region))
   } catch (e) {
     toast.dismiss(loadingToastId)

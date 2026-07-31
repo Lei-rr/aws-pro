@@ -1,5 +1,6 @@
 import { awsAccountTags, CacheTtl, withAwsCache, type CacheReadMode } from '../../lib/cache/aws-cache.js'
 import * as v from '../../lib/utils/aws-validator.js'
+import { scalarString } from '../../lib/utils/scalar.js'
 import { AccountService } from '../account/service.js'
 import { BillingProvider } from '../../lib/aws/providers/billing-provider.js'
 
@@ -18,7 +19,7 @@ export class BillingService {
 
   async yearlySummary(body: Record<string, unknown>, mode: CacheReadMode = {}) {
     v.required(body, ['account_id'])
-    const accountId = v.accountId(String(body.account_id))
+    const accountId = v.accountId(scalarString(body.account_id))
     const account = await this.accounts.requireAccount(accountId)
 
     const result = await withAwsCache<BillingCacheValue>({
@@ -32,8 +33,13 @@ export class BillingService {
         let totalCost = 0
         let totalCredit = 0
         for (const item of items) {
-          totalCost += Number(item.cost || 0)
-          totalCredit += Number(item.credit || 0)
+          const cost = Number(item.cost ?? 0)
+          const credit = Number(item.credit ?? 0)
+          if (!Number.isFinite(cost) || !Number.isFinite(credit)) {
+            throw new Error('AWS billing returned non-finite amount')
+          }
+          totalCost += cost
+          totalCredit += credit
         }
         return { items, total_cost: totalCost, total_credit: totalCredit, unit: 'USD' }
       },

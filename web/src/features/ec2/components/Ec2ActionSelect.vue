@@ -53,11 +53,12 @@ const actions = computed<ActionItem[]>(() => {
     </span>
     <DropdownMenu v-else>
       <DropdownMenuTrigger as-child>
-        <Button variant="ghost" size="icon" class="size-8">
+        <Button variant="ghost" size="icon" class="size-8" aria-label="实例操作">
           <EllipsisVertical class="size-4" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" class="w-44">
+        <DropdownMenuItem @click="emit('operate', row, 'remark')">备注</DropdownMenuItem>
         <DropdownMenuItem
           v-for="action in actions"
           :key="action.key"

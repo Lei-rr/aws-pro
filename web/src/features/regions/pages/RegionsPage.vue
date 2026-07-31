@@ -27,7 +27,7 @@ const STATUS: Record<string, { text: string; ok?: boolean }> = {
   ENABLED_BY_DEFAULT: { text: '默认启用', ok: true },
 }
 
-const enabling = ref('')
+const enabling = ref(new Set<string>())
 const accountId = ref('')
 const configuredRegions = ref<Record<string, string>>({})
 const items = ref<RegionRow[]>([])
@@ -85,7 +85,7 @@ async function enableRegion(row: RegionRow) {
     confirmText: '启用',
     destructive: false,
   }))) return
-  enabling.value = row.region
+  enabling.value = new Set(enabling.value).add(row.region)
   try {
     await regionsApi.enable({ account_id: accountId.value, region: row.region })
     row.status = 'ENABLING'
@@ -93,7 +93,9 @@ async function enableRegion(row: RegionRow) {
   } catch (e) {
     toast.error(errorMessage(e, '启用区域失败'))
   } finally {
-    enabling.value = ''
+    const next = new Set(enabling.value)
+    next.delete(row.region)
+    enabling.value = next
   }
 }
 
@@ -151,7 +153,7 @@ onMounted(async () => {
                 variant="link"
                 size="sm"
                 class="h-auto px-0"
-                :disabled="enabling === record.region"
+                :disabled="enabling.has(record.region)"
                 @click="enableRegion(record)"
               >
                 启用

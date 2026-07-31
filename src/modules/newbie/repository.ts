@@ -65,12 +65,14 @@ export class NewbieTaskRepository {
     return created
   }
 
-  async completeUnlessCancelling(id: string): Promise<'completed' | 'cancelled'> {
+  async completeUnlessCancelling(id: string, workerToken: string): Promise<'completed' | 'cancelled' | null> {
     let outcome: 'completed' | 'cancelled' = 'completed'
+    let updated = false
     await this.store.transaction((current) => ({
       next: {
         items: (current.items ?? []).map((task) => {
-          if (task.id !== id) return task
+          if (task.id !== id || task.worker_token !== workerToken || !ACTIVE.has(task.status)) return task
+          updated = true
           const cancelling = task.status === 'cancelling'
           outcome = cancelling ? 'cancelled' : 'completed'
           const finalLine = cancelling ? '任务已终止：终止请求已接受。' : '执行完毕，连接断开。'
@@ -93,7 +95,7 @@ export class NewbieTaskRepository {
         }),
       },
     }))
-    return outcome
+    return updated ? outcome : null
   }
 
   async claimForExecution(id: string, workerToken: string, leaseMs = 30_000): Promise<boolean> {
@@ -132,6 +134,11 @@ export class NewbieTaskRepository {
     }))
   }
 
+  async ownsExecution(id: string, workerToken: string): Promise<boolean> {
+    const task = await this.find(id)
+    return task?.worker_token === workerToken && ACTIVE.has(task.status)
+  }
+
   async ensureOperationIds(id: string): Promise<Record<string, string>> {
     const generated = {
       budget: crypto.randomUUID(),
@@ -152,12 +159,14 @@ export class NewbieTaskRepository {
     return result
   }
 
-  async failUnlessCancelling(id: string, message: string): Promise<'failed' | 'cancelled'> {
+  async failUnlessCancelling(id: string, message: string, workerToken: string): Promise<'failed' | 'cancelled' | null> {
     let outcome: 'failed' | 'cancelled' = 'failed'
+    let updated = false
     await this.store.transaction((current) => ({
       next: {
         items: (current.items ?? []).map((task) => {
-          if (task.id !== id) return task
+          if (task.id !== id || task.worker_token !== workerToken || !ACTIVE.has(task.status)) return task
+          updated = true
           const cancelling = task.status === 'cancelling'
           outcome = cancelling ? 'cancelled' : 'failed'
           const finalLine = cancelling ? '任务已终止：终止请求已接受。' : `任务失败：${message}`
@@ -178,14 +187,14 @@ export class NewbieTaskRepository {
         }),
       },
     }))
-    return outcome
+    return updated ? outcome : null
   }
 
-  async updateStatus(id: string, status: NewbieTask['status'], message?: string): Promise<void> {
+  async updateStatus(id: string, status: NewbieTask['status'], message?: string, workerToken?: string): Promise<void> {
     await this.store.transaction((current) => ({
       next: {
         items: (current.items ?? []).map((t) =>
-          t.id === id
+          t.id === id && (!workerToken || t.worker_token === workerToken)
             ? {
                 ...t,
                 status,
@@ -198,13 +207,13 @@ export class NewbieTaskRepository {
     }))
   }
 
-  async appendLog(id: string, line: string): Promise<void> {
+  async appendLog(id: string, line: string, workerToken?: string): Promise<void> {
     const text = String(line || '').trimEnd()
     if (!text) return
     await this.store.transaction((current) => ({
       next: {
         items: (current.items ?? []).map((t) => {
-          if (t.id !== id) return t
+          if (t.id !== id || (workerToken && t.worker_token !== workerToken)) return t
           const previous = t.logs ?? []
           const logs = [...previous, text].slice(-2000)
           const dropped = Math.max(0, previous.length + 1 - logs.length)
@@ -224,11 +233,12 @@ export class NewbieTaskRepository {
   async patchRuntime(
     id: string,
     patch: Partial<Pick<NewbieTask, 'resources' | 'phase' | 'current_step' | 'progress'>>,
+    workerToken?: string,
   ): Promise<void> {
     await this.store.transaction((current) => ({
       next: {
         items: (current.items ?? []).map((task) =>
-          task.id === id
+          task.id === id && (!workerToken || task.worker_token === workerToken)
             ? {
                 ...task,
                 ...patch,

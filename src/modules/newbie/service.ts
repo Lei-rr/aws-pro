@@ -1,6 +1,7 @@
 import * as crypto from 'node:crypto'
 import { ApiError } from '../../lib/http/api-error.js'
 import * as v from '../../lib/utils/aws-validator.js'
+import { scalarString } from '../../lib/utils/scalar.js'
 import { AccountService } from '../account/service.js'
 import { NewbieTaskRepository } from './repository.js'
 import { NewbieTaskRunner } from './runner.js'
@@ -25,9 +26,9 @@ export class NewbieTaskService {
 
   async create(body: Record<string, unknown>) {
     v.required(body, ['account_id'])
-    const accountId = v.accountId(String(body.account_id))
+    const accountId = v.accountId(scalarString(body.account_id))
     await this.accounts.requireAccount(accountId)
-    const step = this.step(String(body.step ?? 'all'))
+    const step = this.step(scalarString(body.step, 'all'))
     await this.tasks.pruneFinished()
     const task = await this.tasks.create(accountId, step, this.runner.stepLabel(step))
     if (!task) throw new ApiError('newbie_task_running', 'Another newbie task is running', 409)
@@ -135,28 +136,32 @@ export class NewbieTaskService {
     }, 10_000)
 
     try {
-      await this.runClaimedTask(id, task)
+      await this.runClaimedTask(id, task, workerToken)
     } finally {
       clearInterval(heartbeat)
     }
   }
 
-  private async runClaimedTask(id: string, initialTask: NonNullable<Awaited<ReturnType<NewbieTaskRepository['find']>>>) {
+  private async runClaimedTask(
+    id: string,
+    initialTask: NonNullable<Awaited<ReturnType<NewbieTaskRepository['find']>>>,
+    workerToken: string,
+  ) {
     const wasPending = initialTask.status === 'pending'
     let task = (await this.tasks.find(id)) ?? initialTask
 
     if (task.status === 'cancelling') {
       if (Object.keys(task.resources ?? {}).length) {
-        await this.resumeCleanup(id, task)
+        await this.resumeCleanup(id, task, workerToken)
       } else {
-        await this.tasks.appendLog(id, '任务已终止：终止请求已接受，任务未开始执行。')
-        await this.tasks.updateStatus(id, 'cancelled', 'cancelled before start')
+        await this.tasks.appendLog(id, '任务已终止：终止请求已接受，任务未开始执行。', workerToken)
+        await this.tasks.updateStatus(id, 'cancelled', 'cancelled before start', workerToken)
       }
       return
     }
 
     if (task.status === 'running' && task.phase === 'cleaning' && Object.keys(task.resources ?? {}).length) {
-      await this.resumeCleanup(id, task)
+      await this.resumeCleanup(id, task, workerToken)
       return
     }
 
@@ -170,8 +175,8 @@ export class NewbieTaskService {
     if (!currentTask) return
     task = currentTask
     if (task.status === 'cancelling') {
-      await this.tasks.appendLog(id, '任务已终止：终止请求已接受，任务未继续执行。')
-      await this.tasks.updateStatus(id, 'cancelled', 'cancelled')
+      await this.tasks.appendLog(id, '任务已终止：终止请求已接受，任务未继续执行。', workerToken)
+      await this.tasks.updateStatus(id, 'cancelled', 'cancelled', workerToken)
       return
     }
     if (task.status !== 'running') return
@@ -196,39 +201,51 @@ export class NewbieTaskService {
         async (patch) => this.tasks.patchRuntime(id, patch),
       )
       await logChain.catch(() => undefined)
-      await this.tasks.completeUnlessCancelling(id)
+      await this.tasks.completeUnlessCancelling(id, workerToken)
     } catch (error) {
       await logChain.catch(() => undefined)
       const msg = error instanceof Error ? error.message : String(error)
-      await this.tasks.failUnlessCancelling(id, msg)
+      await this.tasks.failUnlessCancelling(id, msg, workerToken)
     }
   }
 
-  private async resumeCleanup(id: string, task: NonNullable<Awaited<ReturnType<NewbieTaskRepository['find']>>>) {
+  private async resumeCleanup(
+    id: string,
+    task: NonNullable<Awaited<ReturnType<NewbieTaskRepository['find']>>>,
+    workerToken: string,
+  ) {
     let logChain = Promise.resolve()
     const appendRunnerLog = (message: string, ...args: unknown[]) => {
       let i = 0
       const line = String(message).replace(/%s/g, () => String(args[i++] ?? ''))
-      logChain = logChain.then(() => this.tasks.appendLog(id, line))
+      logChain = logChain.then(() => this.tasks.appendLog(id, line, workerToken))
     }
     try {
       const account = await this.accounts.requireAccount(task.account_id)
-      await this.tasks.patchRuntime(id, { phase: 'cleaning' })
-      await this.tasks.appendLog(id, '后台恢复资源清理，不会重新创建资源。')
+      if (!(await this.tasks.ownsExecution(id, workerToken))) return
+      await this.tasks.patchRuntime(id, { phase: 'cleaning' }, workerToken)
+      await this.tasks.appendLog(id, '后台恢复资源清理，不会重新创建资源。', workerToken)
       await this.runner.cleanup(account, task.resources ?? {}, appendRunnerLog)
       await logChain
+      if (!(await this.tasks.ownsExecution(id, workerToken))) return
       const cancelling = (await this.tasks.find(id))?.status === 'cancelling'
-      await this.tasks.updateStatus(id, cancelling ? 'cancelled' : 'failed', cancelling ? 'cancelled after cleanup' : 'interrupted task cleanup completed')
-      await this.tasks.patchRuntime(id, { phase: 'done' })
+      await this.tasks.updateStatus(
+        id,
+        cancelling ? 'cancelled' : 'failed',
+        cancelling ? 'cancelled after cleanup' : 'interrupted task cleanup completed',
+        workerToken,
+      )
+      await this.tasks.patchRuntime(id, { phase: 'done' }, workerToken)
       await this.tasks.appendLog(
         id,
         cancelling ? '任务已终止：临时资源清理完成。' : '任务中断：已恢复并清理临时资源，请重新执行。',
+        workerToken,
       )
     } catch (error) {
       await logChain.catch(() => undefined)
       const msg = error instanceof Error ? error.message : String(error)
-      await this.tasks.appendLog(id, `任务失败：恢复清理失败：${msg}`)
-      await this.tasks.updateStatus(id, 'failed', msg)
+      await this.tasks.appendLog(id, `任务失败：恢复清理失败：${msg}`, workerToken)
+      await this.tasks.updateStatus(id, 'failed', msg, workerToken)
     }
   }
 

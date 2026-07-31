@@ -7,7 +7,7 @@ const ERROR_MESSAGE_MAP: Record<string, string> = {
   server_error: '服务内部错误',
   internal_error: '服务内部错误',
   request_error: '请求错误',
-  validation_error: '参数校验失败',
+  validation_error: '参数校验未通过',
   service_unavailable: '服务暂时不可用，请稍后重试',
   health_check_failed: '健康检查失败',
   field_required: '必填字段缺失',
@@ -16,6 +16,7 @@ const ERROR_MESSAGE_MAP: Record<string, string> = {
   account_not_found: '账号不存在',
   account_already_exists: '账号已存在',
   account_id_invalid: '账号 ID 无效',
+  account_id_immutable: '服务商 ID 创建后不可修改',
   secret_key_required: 'Secret Key 不能为空',
 
   instance_not_found: '实例不存在',

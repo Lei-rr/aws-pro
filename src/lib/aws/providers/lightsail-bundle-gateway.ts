@@ -3,6 +3,7 @@ import { GetBundlesCommand, type Bundle } from '@aws-sdk/client-lightsail'
 import type { AwsAccount } from '../../../types/aws.js'
 import { AwsClientFactory } from '../client-factory.js'
 import { awsCall } from '../errors.js'
+import { providerFiniteNumber, providerString } from '../../utils/scalar.js'
 
 export type LightsailBundleMeta = {
   label: string
@@ -22,12 +23,14 @@ export class LightsailBundleGateway {
       do {
         const result = await client.send(new GetBundlesCommand({ pageToken }))
         for (const item of result.bundles ?? []) {
-          const bundleId = String(item.bundleId ?? '')
+          const bundleId = providerString(item.bundleId)
           if (!bundleId) continue
           items[bundleId] = {
             label: this.bundleLabel(bundleId, item),
             specs: this.bundleSpecs(item),
-            public_ipv4_count: item.publicIpv4AddressCount ?? null,
+            public_ipv4_count: item.publicIpv4AddressCount == null
+              ? null
+              : providerFiniteNumber(item.publicIpv4AddressCount, 0),
             is_ipv6_only: this.isIpv6Only(bundleId, item),
           }
         }
@@ -44,11 +47,11 @@ export class LightsailBundleGateway {
 
   private bundleSpecs(bundle: Bundle) {
     return {
-      cpu: bundle.cpuCount ?? null,
-      memory: bundle.ramSizeInGb ?? null,
-      disk: bundle.diskSizeInGb ?? null,
-      transfer: bundle.transferPerMonthInGb ? bundle.transferPerMonthInGb / 1024 : null,
-      price: bundle.price ?? null,
+      cpu: bundle.cpuCount == null ? null : providerFiniteNumber(bundle.cpuCount),
+      memory: bundle.ramSizeInGb == null ? null : providerFiniteNumber(bundle.ramSizeInGb),
+      disk: bundle.diskSizeInGb == null ? null : providerFiniteNumber(bundle.diskSizeInGb),
+      transfer: bundle.transferPerMonthInGb ? providerFiniteNumber(bundle.transferPerMonthInGb) / 1024 : null,
+      price: bundle.price == null ? null : providerFiniteNumber(bundle.price),
     }
   }
 

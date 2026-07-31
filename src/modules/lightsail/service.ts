@@ -2,6 +2,7 @@
 import { ApiError } from '../../lib/http/api-error.js'
 import { CacheTtl, invalidateAwsCache, withAwsCache } from '../../lib/cache/aws-cache.js'
 import * as v from '../../lib/utils/aws-validator.js'
+import { scalarString } from '../../lib/utils/scalar.js'
 import type { LightsailInstance } from '../../types/aws.js'
 import { LightsailProvider } from '../../lib/aws/providers/lightsail-provider.js'
 import { LightsailBundleGateway, type LightsailBundleMeta } from '../../lib/aws/providers/lightsail-bundle-gateway.js'
@@ -151,25 +152,25 @@ export class LightsailService {
 
   private normalizeCreate(data: Record<string, unknown>) {
     v.required(data, ['name', 'zone', 'blueprint', 'bundle'])
-    const ip = String(data.ip_address_type ?? 'dualstack')
+    const ip = scalarString(data.ip_address_type, 'dualstack')
     if (!['dualstack', 'ipv4', 'ipv6'].includes(ip)) {
       throw new ApiError('ip_address_type_invalid', 'Invalid ip_address_type', 422)
     }
     return {
-      name: v.instanceName(String(data.name)),
-      zone: String(data.zone).trim(),
-      blueprint: String(data.blueprint).trim(),
-      bundle: String(data.bundle).trim(),
+      name: v.instanceName(scalarString(data.name)),
+      zone: scalarString(data.zone),
+      blueprint: scalarString(data.blueprint),
+      bundle: scalarString(data.bundle),
       ip_address_type: ip,
-      root_password: String(data.root_password ?? ''),
+      root_password: scalarString(data.root_password),
     }
   }
 
   private normalizeAction(data: Record<string, unknown>) {
-    const action = String(data.action ?? '').trim()
+    const action = scalarString(data.action)
     const allowed = ['allocate_static_ip', 'release_static_ip', 'start', 'stop', 'reboot', 'delete', 'open_ports']
     if (!allowed.includes(action)) throw new ApiError('lightsail_action_invalid', 'Invalid Lightsail action', 422, { action })
-    if (String(data.confirm ?? '') !== action) {
+    if (scalarString(data.confirm) !== action) {
       throw new ApiError('lightsail_action_confirm_required', 'Action confirmation is required', 422, { action })
     }
     return action

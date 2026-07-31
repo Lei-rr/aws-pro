@@ -44,6 +44,6 @@ export async function healthShow(_request: FastifyRequest, reply: FastifyReply) 
 }
 
 export async function configIndex(request: FastifyRequest, reply: FastifyReply) {
-  const cfg = await request.server.ctx.systemConfigRepository.read()
+  const cfg = await request.server.ctx.systemConfigService.read()
   return reply.send(success(cfg))
 }

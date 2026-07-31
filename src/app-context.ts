@@ -23,7 +23,7 @@ import { BillingService } from './modules/billing/service.js'
 import { NewbieTaskRepository } from './modules/newbie/repository.js'
 import { NewbieTaskRunner } from './modules/newbie/runner.js'
 import { NewbieTaskService } from './modules/newbie/service.js'
-import { SystemConfigRepository } from './modules/system/config-repository.js'
+import { SystemConfigService } from './modules/system/config-repository.js'
 import { AwsClientFactory } from './lib/aws/client-factory.js'
 import { LightsailProvider } from './lib/aws/providers/lightsail-provider.js'
 import { LightsailBundleGateway } from './lib/aws/providers/lightsail-bundle-gateway.js'
@@ -40,7 +40,7 @@ export async function createAppContext(config: AppConfig) {
   )
   const authConfig = new AuthConfig(appConfigRepository)
   const sessionService = new SessionService(authConfig)
-  const systemConfigRepository = new SystemConfigRepository()
+  const systemConfigService = new SystemConfigService()
 
   const accountRepository = new AccountRepository(new JsonStore('accounts.json', { items: [] }))
   const lightsailRepository = new LightsailInstanceRepository(
@@ -60,7 +60,7 @@ export async function createAppContext(config: AppConfig) {
   const regionService = new RegionService(
     accountService,
     new RegionProvider(clients),
-    systemConfigRepository,
+    systemConfigService,
   )
   const quotaService = new QuotaService(accountService, new QuotaProvider(clients))
   const billingService = new BillingService(accountService, new BillingProvider(clients))
@@ -75,7 +75,7 @@ export async function createAppContext(config: AppConfig) {
   return {
     config,
     sessionService,
-    systemConfigRepository,
+    systemConfigService,
     accountService,
     lightsailService,
     ec2Service,

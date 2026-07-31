@@ -7,10 +7,11 @@ export const accountApi = {
     return http.get('/accounts')
   },
   save(account: Partial<Account> & { original_id?: string }) {
-    if (account.original_id) {
-      return http.put(`/accounts/${encodePath(String(account.original_id))}`, account)
+    const { original_id: originalId, ...payload } = account
+    if (originalId) {
+      return http.put(`/accounts/${encodePath(String(originalId))}`, payload)
     }
-    return http.post('/accounts', account)
+    return http.post('/accounts', payload)
   },
   remove(id: string) {
     return http.delete(`/accounts/${encodePath(id)}`)

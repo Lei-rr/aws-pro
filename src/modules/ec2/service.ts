@@ -2,6 +2,8 @@
 import { ApiError } from '../../lib/http/api-error.js'
 import { CacheTtl, invalidateAwsCache, withAwsCache } from '../../lib/cache/aws-cache.js'
 import * as v from '../../lib/utils/aws-validator.js'
+import { scalarString } from '../../lib/utils/scalar.js'
+import { parseBool } from '../../lib/utils/parse-bool.js'
 import type { Ec2Instance } from '../../types/aws.js'
 import { AccountService } from '../account/service.js'
 import { Ec2Provider } from '../../lib/aws/providers/ec2-provider.js'
@@ -138,25 +140,25 @@ export class Ec2Service {
 
   private normalizeCreate(data: Record<string, unknown>) {
     v.required(data, ['name', 'ami', 'instance_type'])
-    const ami = String(data.ami).trim()
+    const ami = scalarString(data.ami)
     if (!AMIS[ami] && !ami.startsWith('ami-')) throw new ApiError('ec2_ami_invalid', 'Invalid EC2 AMI', 422, { ami })
-    const instanceType = String(data.instance_type).trim()
+    const instanceType = scalarString(data.instance_type)
     if (!INSTANCE_TYPES[instanceType]) throw new ApiError('ec2_instance_type_invalid', 'Invalid instance type', 422)
     return {
-      name: v.instanceName(String(data.name)),
+      name: v.instanceName(scalarString(data.name)),
       ami,
       instance_type: instanceType,
-      root_password: String(data.root_password ?? ''),
-      enable_ipv6: Boolean(data.enable_ipv6),
-      client_token: String(data.client_token ?? ''),
+      root_password: scalarString(data.root_password),
+      enable_ipv6: parseBool(data.enable_ipv6),
+      client_token: scalarString(data.client_token),
     }
   }
 
   private normalizeAction(data: Record<string, unknown>) {
-    const action = String(data.action ?? '').trim()
+    const action = scalarString(data.action)
     const allowed = ['allocate_static_ip', 'release_static_ip', 'start', 'stop', 'reboot', 'terminate', 'open_ports']
     if (!allowed.includes(action)) throw new ApiError('ec2_action_invalid', 'Invalid EC2 action', 422, { action })
-    if (String(data.confirm ?? '') !== action) throw new ApiError('ec2_action_confirm_required', 'Action confirmation is required', 422, { action })
+    if (scalarString(data.confirm) !== action) throw new ApiError('ec2_action_confirm_required', 'Action confirmation is required', 422, { action })
     return action
   }
 

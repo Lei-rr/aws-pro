@@ -3,6 +3,7 @@ import { EnableRegionCommand, ListRegionsCommand } from '@aws-sdk/client-account
 import type { AwsAccount } from '../../../types/aws.js'
 import { AwsClientFactory } from '../client-factory.js'
 import { awsCall } from '../errors.js'
+import { providerString } from '../../utils/scalar.js'
 
 export class RegionProvider {
   constructor(private readonly clients: AwsClientFactory) {}
@@ -15,9 +16,9 @@ export class RegionProvider {
       do {
         const result = await client.send(new ListRegionsCommand(nextToken ? { NextToken: nextToken } : {}))
         for (const region of result.Regions ?? []) {
-          const name = String(region.RegionName ?? '')
+          const name = providerString(region.RegionName)
           if (!name) continue
-          items.push({ account_id: account.id, region: name, status: String(region.RegionOptStatus ?? 'UNKNOWN') })
+          items.push({ account_id: account.id, region: name, status: providerString(region.RegionOptStatus, 'UNKNOWN') })
         }
         nextToken = result.NextToken || undefined
       } while (nextToken)

@@ -51,11 +51,15 @@ const actions = computed<ActionItem[]>(() => {
     </span>
     <DropdownMenu v-else>
       <DropdownMenuTrigger as-child>
-        <Button variant="ghost" size="icon" class="size-8">
+        <Button variant="ghost" size="icon" class="size-8" aria-label="实例操作">
           <EllipsisVertical class="size-4" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" class="w-40">
+        <DropdownMenuItem @click="emit('operate', row, row.static_ip ? 'release_static_ip' : 'allocate_static_ip')">
+          {{ row.static_ip ? '释放静态 IP' : '获取静态 IP' }}
+        </DropdownMenuItem>
+        <DropdownMenuItem @click="emit('operate', row, 'remark')">备注</DropdownMenuItem>
         <DropdownMenuItem
           v-for="action in actions"
           :key="action.key"

@@ -2,6 +2,7 @@ import { ApiError } from '../../lib/http/api-error.js'
 import { awsAccountTags, invalidateAwsCache } from '../../lib/cache/aws-cache.js'
 import { maskSecret } from '../../lib/utils/secret-masker.js'
 import * as v from '../../lib/utils/aws-validator.js'
+import { scalarString } from '../../lib/utils/scalar.js'
 import type { AwsAccount, PublicAwsAccount } from '../../types/aws.js'
 import { AccountRepository } from './repository.js'
 import { LightsailInstanceRepository } from '../lightsail/repository.js'
@@ -36,7 +37,7 @@ export class AccountService {
 
   private async createAccount(body: Record<string, unknown>): Promise<PublicAwsAccount> {
     v.required(body, ['id', 'access_key', 'secret_key'])
-    const id = v.accountId(String(body.id))
+    const id = v.accountId(scalarString(body.id))
     const account = await this.accounts.create(this.normalize(body, id))
     this.invalidateAccountCaches(account.id)
     return this.publicAccount(account)
@@ -48,43 +49,18 @@ export class AccountService {
 
   private async updateAccount(id: string, body: Record<string, unknown>): Promise<PublicAwsAccount> {
     const existing = await this.requireAccount(id)
-    const merged = { ...body }
+    const requestedId = scalarString(body.id, id)
+    if (requestedId !== id) {
+      throw new ApiError('account_id_immutable', 'Account id cannot be changed', 422, { id })
+    }
+    const merged: Record<string, unknown> = { ...body, id }
     if (merged.secret_key === undefined || String(merged.secret_key).trim() === '') {
       merged.secret_key = existing.secret_key
     }
     const normalized = this.normalize(merged, id)
-    if (normalized.id === id) {
-      const account = await this.accounts.replace(id, normalized)
-      this.invalidateAccountCaches(id)
-      return this.publicAccount(account)
-    }
-
-    const newId = normalized.id
-    if (await this.accounts.find(newId)) {
-      throw new ApiError('account_already_exists', 'Account already exists', 409, { id: newId })
-    }
-    const lightsailSnapshot = await this.lightsail.itemsByAccount(id)
-    const ec2Snapshot = await this.ec2.itemsByAccount(id)
-    const targetLightsailSnapshot = await this.lightsail.itemsByAccount(newId)
-    const targetEc2Snapshot = await this.ec2.itemsByAccount(newId)
-    try {
-      await this.lightsail.renameAccount(id, newId)
-      await this.ec2.renameAccount(id, newId)
-      const account = await this.accounts.replace(id, normalized)
-      this.invalidateAccountCaches(id, newId)
-      return this.publicAccount(account)
-    } catch (error) {
-      await Promise.allSettled([
-        this.lightsail.replaceAccount(newId, targetLightsailSnapshot),
-        this.ec2.replaceAccount(newId, targetEc2Snapshot),
-      ])
-      await Promise.allSettled([
-        this.lightsail.replaceAccount(id, lightsailSnapshot),
-        this.ec2.replaceAccount(id, ec2Snapshot),
-      ])
-      this.invalidateAccountCaches(id, newId)
-      throw error
-    }
+    const account = await this.accounts.replace(id, normalized)
+    this.invalidateAccountCaches(id)
+    return this.publicAccount(account)
   }
 
   async delete(id: string): Promise<void> {
@@ -134,10 +110,10 @@ export class AccountService {
   }
 
   private normalize(data: Record<string, unknown>, fallbackId: string): AwsAccount {
-    const id = v.accountId(String(data.id ?? fallbackId))
-    const access_key = String(data.access_key ?? '').trim()
-    const secret_key = String(data.secret_key ?? '').trim()
-    const remark = String(data.remark ?? '').trim()
+    const id = v.accountId(scalarString(data.id, fallbackId))
+    const access_key = scalarString(data.access_key)
+    const secret_key = scalarString(data.secret_key)
+    const remark = scalarString(data.remark)
     if (!access_key) throw new ApiError('field_required', 'access_key is required', 422, { field: 'access_key' })
     if (!secret_key) throw new ApiError('field_required', 'secret_key is required', 422, { field: 'secret_key' })
     return { id, access_key, secret_key, remark }

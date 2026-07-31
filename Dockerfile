@@ -23,7 +23,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 
 const junkPatterns = [
-  /(^|\/)(\.npmignore|\.eslintrc.*|\.prettierrc.*|tsconfig.*\.json|CHANGELOG.*|HISTORY.*|README.*|LICENSE.*|LICENCE.*|\.map)$/i,
+  /(^|\/)(\.npmignore|\.eslintrc.*|\.prettierrc.*|tsconfig.*\.json|CHANGELOG.*|HISTORY.*|README.*|\.map)$/i,
   /(^|\/)(test|tests|__tests__|docs|example|examples|coverage)(\/|$)/i,
 ]
 
@@ -71,6 +71,7 @@ COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/web/dist ./web/dist
 COPY package.json ./
+COPY LICENSE ./
 COPY docker/entrypoint.sh /entrypoint.sh
 
 RUN mkdir -p /app/data

@@ -1,6 +1,6 @@
 interface CacheEntry<T> {
   value: T
-  expiresAt: number
+  expiresAt: number | null
   tags: string[]
 }
 
@@ -41,7 +41,7 @@ export class CacheService {
   get<T>(key: string): T | undefined {
     const entry = this.store.get(key)
     if (!entry) return undefined
-    if (entry.expiresAt < Date.now()) {
+    if (entry.expiresAt !== null && entry.expiresAt < Date.now()) {
       this.store.delete(key)
       return undefined
     }
@@ -55,7 +55,7 @@ export class CacheService {
 
     this.store.set(key, {
       value,
-      expiresAt: Date.now() + ttlMs,
+      expiresAt: Number.isFinite(ttlMs) ? Date.now() + ttlMs : null,
       tags,
     })
 
@@ -105,7 +105,7 @@ export class CacheService {
   private sweepExpired(): void {
     const now = Date.now()
     for (const [key, entry] of this.store.entries()) {
-      if (entry.expiresAt < now) {
+      if (entry.expiresAt !== null && entry.expiresAt < now) {
         this.store.delete(key)
       }
     }

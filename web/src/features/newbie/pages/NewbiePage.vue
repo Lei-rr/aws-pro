@@ -40,6 +40,7 @@ let eventSource: EventSource | null = null
 let pollTimer: ReturnType<typeof setTimeout> | null = null
 let lastLogSeq = 0
 let watchVersion = 0
+let restoreVersion = 0
 
 const canStart = computed(() => !!accountId.value && !running.value)
 const selectedStepLabel = computed(
@@ -193,8 +194,10 @@ function humanizeAwsCredentialError(raw: unknown): string {
 }
 
 async function restoreActiveTask() {
+  const version = ++restoreVersion
   try {
     const response = await newbieApi.getRecentTask()
+    if (version !== restoreVersion) return
     const t = apiPayload<NewbieTask>(response)
     if (!t?.id) return
     task.value = t
@@ -213,12 +216,14 @@ async function restoreActiveTask() {
       terminalNotified = true
     }
   } catch (e) {
+    if (version !== restoreVersion) return
     restoreFailed.value = true
     logs.value = [`任务状态恢复失败：${errorMessage(e, '网络错误')}。请刷新页面重试。`]
   }
 }
 
 async function startTask() {
+  restoreVersion += 1
   loading.value = true
   terminalNotified = false
   logs.value = [`正在创建后台任务（账号: ${accountId.value}，范围: ${selectedStepLabel.value}）...`]
@@ -230,6 +235,7 @@ async function startTask() {
     const created = apiPayload<NewbieTask>(response)
     if (!created) throw new Error('创建成功但任务响应为空')
     task.value = created
+    restoreFailed.value = false
     // 立即用服务端初始日志覆盖，避免只有「正在创建」
     if (Array.isArray(created.logs) && created.logs.length) {
       logs.value = [...created.logs]

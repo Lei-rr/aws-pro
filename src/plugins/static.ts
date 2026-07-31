@@ -36,7 +36,7 @@ const staticPluginImpl: FastifyPluginAsync = async (app) => {
   })
 
   app.addHook('onSend', async (request, reply) => {
-    if (request.raw.url?.startsWith('/assets/')) {
+    if (request.raw.url?.startsWith('/assets/') && reply.statusCode < 400) {
       reply.header('Cache-Control', 'public, max-age=31536000, immutable')
     }
   })

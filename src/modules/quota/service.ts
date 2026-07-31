@@ -1,5 +1,6 @@
 import { awsAccountTags, CacheTtl, withAwsCache, type CacheReadMode } from '../../lib/cache/aws-cache.js'
 import * as v from '../../lib/utils/aws-validator.js'
+import { scalarString } from '../../lib/utils/scalar.js'
 import { AccountService } from '../account/service.js'
 import { QuotaProvider } from '../../lib/aws/providers/quota-provider.js'
 
@@ -11,8 +12,8 @@ export class QuotaService {
 
   async vcpuQuota(body: Record<string, unknown>, mode: CacheReadMode = {}) {
     v.required(body, ['account_id', 'region'])
-    const accountId = v.accountId(String(body.account_id))
-    const region = v.region(String(body.region))
+    const accountId = v.accountId(scalarString(body.account_id))
+    const region = v.region(scalarString(body.region))
     const account = await this.accounts.requireAccount(accountId)
 
     const result = await withAwsCache({

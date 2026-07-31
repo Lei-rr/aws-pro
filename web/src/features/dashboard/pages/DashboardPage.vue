@@ -4,6 +4,7 @@ import { RouterLink } from 'vue-router'
 import { RefreshCw, Server, CreditCard, Activity, KeyRound } from '@lucide/vue'
 import { Button } from '@/shared/ui/button'
 import { Badge } from '@/shared/ui/badge'
+import { TableLoading } from '@/shared/ui/table'
 import { PageHeader } from '@/shared/ui/page-header'
 import { loadAccounts, useAccountStore } from '@/features/accounts/stores/accounts'
 import { loadConfig, useConfigStore } from '@/features/config/stores/config'
@@ -26,16 +27,14 @@ const { loading, refreshing, runLoad, onRefresh, fail } = useListPage({
       const [, , ls, ec2] = await Promise.all([
         loadAccounts({ force: options.refresh }),
         loadConfig({ force: options.refresh }),
-        lightsailApi.instances(options.refresh ? { refresh: 1 } : {}),
-        ec2Api.instances(options.refresh ? { refresh: 1 } : {}),
+        lightsailApi.instances(options.refresh ? { refresh: 'true' } : {}),
+        ec2Api.instances(options.refresh ? { refresh: 'true' } : {}),
       ])
       if (options.isLatest && !options.isLatest()) return false
       lightsailInstances.value = apiList<AwsInstance>(ls, ['items'])
       ec2Instances.value = apiList<AwsInstance>(ec2, ['items'])
     } catch (e) {
       if (options.isLatest && !options.isLatest()) return false
-      lightsailInstances.value = []
-      ec2Instances.value = []
       fail(e)
       return false
     }
@@ -117,11 +116,12 @@ onMounted(() => runLoad())
       </div>
     </div>
 
-    <div>
-      <div class="mb-3">
-        <h2 class="text-base font-semibold">账号与区域资源分布</h2>
-        <p class="text-muted-foreground text-sm">按账号汇总区域数量，并展示每个区域的实例分布。</p>
-      </div>
+    <TableLoading :loading="loading" :empty="!accountRegionSummary.length">
+      <div>
+        <div class="mb-3">
+          <h2 class="text-base font-semibold">账号与区域资源分布</h2>
+          <p class="text-muted-foreground text-sm">按账号汇总区域数量，并展示每个区域的实例分布。</p>
+        </div>
       <div v-if="!accountRegionSummary.length" class="text-muted-foreground py-10 text-center text-sm">
         暂无账号区域资源
       </div>
@@ -148,6 +148,7 @@ onMounted(() => runLoad())
           <div v-else class="text-muted-foreground text-sm">暂无区域</div>
         </div>
       </div>
-    </div>
+      </div>
+    </TableLoading>
   </div>
 </template>
