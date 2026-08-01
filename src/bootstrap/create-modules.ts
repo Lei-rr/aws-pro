@@ -40,7 +40,12 @@ export async function createModules() {
   )
 
   const authConfigRepository = new AppConfigRepository(new JsonStore('config.json', DEFAULT_APP_CONFIG))
-  await authConfigRepository.initialize()
+  await Promise.all([
+    authConfigRepository.initialize(),
+    accountsRepository.all(),
+    lightsailRepository.all(),
+    ec2Repository.all(),
+  ])
 
   return {
     auth: {
