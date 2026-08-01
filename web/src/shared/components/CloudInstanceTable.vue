@@ -2,26 +2,12 @@
 import { computed, ref, watch } from 'vue'
 import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  TableLoading,
-} from '@/shared/ui/table'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableLoading } from '@/shared/ui/table'
 import { TablePagination } from '@/shared/ui/pagination'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/shared/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select'
 import { regionName } from '@/shared/lib/format'
 import { loadPageSize, savePageSize } from '@/shared/lib/page-size'
-import type { AwsInstance } from '@/shared/types'
+import type { AwsInstance } from '@/shared/api/types'
 
 const props = withDefaults(
   defineProps<{
@@ -46,7 +32,7 @@ const props = withDefaults(
     rowBusy: () => false,
     stateLabels: () => ({}),
     emptyText: '暂无实例，请先选择账号和区域同步。',
-  },
+  }
 )
 
 const emit = defineEmits<{
@@ -63,15 +49,13 @@ const filterState = ref('all')
 const filterStatic = ref('all')
 
 const accountOptions = computed(() =>
-  Array.from(new Set((props.instances || []).map((r) => r.account_id).filter(Boolean) as string[])).sort(),
+  Array.from(new Set((props.instances || []).map((r) => r.account_id).filter(Boolean) as string[])).sort()
 )
 const packageOptions = computed(() =>
-  Array.from(
-    new Set((props.instances || []).map((r) => String(r[props.packageKey] || '')).filter(Boolean)),
-  ).sort(),
+  Array.from(new Set((props.instances || []).map((r) => String(r[props.packageKey] || '')).filter(Boolean))).sort()
 )
 const regionOptions = computed(() =>
-  Array.from(new Set((props.instances || []).map((r) => r.region).filter(Boolean) as string[])).sort(),
+  Array.from(new Set((props.instances || []).map((r) => r.region).filter(Boolean) as string[])).sort()
 )
 
 const filtered = computed(() => {
@@ -103,7 +87,7 @@ watch(
   () => {
     const maxPage = Math.max(1, Math.ceil(filtered.value.length / pageSize.value) || 1)
     if (page.value > maxPage) page.value = maxPage
-  },
+  }
 )
 
 function stateLabel(state?: string) {

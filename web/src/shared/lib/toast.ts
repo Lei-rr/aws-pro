@@ -26,7 +26,6 @@ export const toast = {
   warning: (title: string, description?: string) => sonner.warning(title, opts({ description })),
   info: (title: string, description?: string) => sonner.info(title, opts({ description })),
   /** 进行中提示：默认不自动消失，需 dismiss(id) 或被 success/error 替换 */
-  loading: (title: string, description?: string) =>
-    sonner.loading(title, opts({ description, duration: Infinity })),
+  loading: (title: string, description?: string) => sonner.loading(title, opts({ description, duration: Infinity })),
   dismiss: (id?: string | number) => sonner.dismiss(id),
 }

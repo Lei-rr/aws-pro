@@ -15,7 +15,7 @@ const props = withDefaults(
     tone?: 'info' | 'warning'
     class?: string
   }>(),
-  { tone: 'info', percent: null },
+  { tone: 'info', percent: null }
 )
 
 /** Only show when running OR real progress text — never fake default string. */
@@ -32,7 +32,7 @@ const progressValue = computed(() => {
   return Math.max(0, Math.min(100, Number(props.percent)))
 })
 const isTerminal = computed(
-  () => resolvedStatus.value === 'completed' || resolvedStatus.value === 'failed' || (!props.running && !!props.text),
+  () => resolvedStatus.value === 'completed' || resolvedStatus.value === 'failed' || (!props.running && !!props.text)
 )
 </script>
 
@@ -44,8 +44,10 @@ const isTerminal = computed(
         cn(
           'bg-card rounded-xl border px-3.5 py-3 text-sm shadow-xs transition-opacity duration-300',
           resolvedStatus === 'failed' && 'border-destructive/30',
-          (resolvedStatus === 'completed' || isTerminal) && resolvedStatus !== 'failed' && 'border-border/60 opacity-90',
-          props.class,
+          (resolvedStatus === 'completed' || isTerminal) &&
+            resolvedStatus !== 'failed' &&
+            'border-border/60 opacity-90',
+          props.class
         )
       "
       role="status"
@@ -60,11 +62,7 @@ const isTerminal = computed(
           <div v-if="description || (text && title)" class="text-muted-foreground mt-0.5 text-xs">
             {{ description || text }}
           </div>
-          <Progress
-            v-if="progressValue != null && running"
-            class="mt-2.5 h-1.5"
-            :model-value="progressValue"
-          />
+          <Progress v-if="progressValue != null && running" class="mt-2.5 h-1.5" :model-value="progressValue" />
         </div>
       </div>
     </div>

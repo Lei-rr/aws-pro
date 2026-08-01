@@ -1,13 +1,15 @@
 import type { FastifyInstance } from 'fastify'
 import Fastify from 'fastify'
-import type { AppConfig } from './config/app.js'
-import { createAppContext } from './app-context.js'
+import { TypeBoxValidatorCompiler, type TypeBoxTypeProvider } from '@fastify/type-provider-typebox'
+import type { AppConfig } from './bootstrap/app-config.js'
+import { createAppContext } from './bootstrap/create-context.js'
+import { startContext } from './bootstrap/start-context.js'
 import { appContextPlugin } from './plugins/app-context.js'
 import { securityPlugin } from './plugins/security.js'
 import { staticPlugin } from './plugins/static.js'
 import { errorHandlerPlugin } from './plugins/error-handler.js'
-import { registerApiRoutes } from './compose/http-modules.js'
-import './types/fastify.d.ts'
+import { registerApiRoutes } from './bootstrap/register-routes.js'
+import './types/fastify.d.js'
 
 /**
  * HTTP shell — official Fastify only.
@@ -15,7 +17,7 @@ import './types/fastify.d.ts'
  * plugins/*  = Fastify plugins (cookie/helmet/static/session/ctx)
  * modules/*  = business features (routes + services)
  * platform/* = data dirs (+ future job/events if needed)
- * Composition root = app-context.ts (sole wiring)
+ * Composition root = bootstrap/* (sole wiring)
  */
 export async function buildApp(config: AppConfig) {
   if (config.sessionSecret.trim().length < 32) {
@@ -33,18 +35,27 @@ export async function buildApp(config: AppConfig) {
     },
     ajv: { customOptions: { coerceTypes: false, removeAdditional: false } },
   })
+    .withTypeProvider<TypeBoxTypeProvider>()
+    .setValidatorCompiler(TypeBoxValidatorCompiler)
 
   const ctx = await createAppContext(config)
+  await startContext(ctx)
 
   await app.register(appContextPlugin, { ctx })
+  app.addHook('onClose', async () => {
+    await ctx.modules.newbie.service.close()
+  })
   await app.register(securityPlugin, { config })
   await app.register(staticPlugin)
   await app.register(errorHandlerPlugin)
 
   // Keep /api (not /api/v1) — frontend baseURL is /api
-  await app.register(async function api(scope) {
-    await registerApiRoutes(scope)
-  }, { prefix: '/api' })
+  await app.register(
+    async function api(scope) {
+      await registerApiRoutes(scope)
+    },
+    { prefix: '/api' }
+  )
 
   return app
 }

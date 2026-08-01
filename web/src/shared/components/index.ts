@@ -1,5 +1,0 @@
-export { default as AccountSelect } from './AccountSelect.vue'
-export { default as RegionSelect } from './RegionSelect.vue'
-export { default as CopyButton } from './CopyButton.vue'
-export { default as CloudInstanceTable } from './CloudInstanceTable.vue'
-export { default as InstanceRemarkDialog } from './InstanceRemarkDialog.vue'

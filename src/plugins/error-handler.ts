@@ -1,14 +1,18 @@
 import type { FastifyError, FastifyPluginAsync, FastifySchemaValidationError } from 'fastify'
 import fp from 'fastify-plugin'
-import { ApiError } from '../lib/http/api-error.js'
-import { error } from '../lib/http/api-response.js'
+import { ApiError } from '../shared/http/api-error.js'
+import { error } from '../shared/http/api-response.js'
 
 function validationFieldErrors(validation: FastifySchemaValidationError[]): Record<string, string> {
   const fields: Record<string, string> = {}
   for (const item of validation) {
     const missing = String(item.params?.missingProperty ?? '').trim()
     const additional = String(item.params?.additionalProperty ?? '').trim()
-    const path = String(item.instancePath ?? '').split('/').filter(Boolean).at(-1) ?? ''
+    const path =
+      String(item.instancePath ?? '')
+        .split('/')
+        .filter(Boolean)
+        .at(-1) ?? ''
     const field = missing || additional || path || 'request'
     if (!(field in fields)) fields[field] = item.message || '字段格式不正确'
   }
@@ -21,8 +25,17 @@ function validationFieldErrors(validation: FastifySchemaValidationError[]): Reco
  */
 const errorHandlerPluginImpl: FastifyPluginAsync = async (app) => {
   app.setNotFoundHandler(async (request, reply) => {
-    if (request.url.startsWith('/api/') || request.url.startsWith('/assets/')) {
-      if (request.url.startsWith('/assets/')) reply.header('Cache-Control', 'no-store')
+    const pathname = request.url.split('?', 1)[0] ?? request.url
+    const apiRequest = pathname === '/api' || pathname.startsWith('/api/')
+    const assetRequest = pathname === '/assets' || pathname.startsWith('/assets/')
+    const navigation =
+      (request.method === 'GET' || request.method === 'HEAD') &&
+      String(request.headers.accept ?? '')
+        .toLowerCase()
+        .includes('text/html')
+
+    if (apiRequest || assetRequest || !navigation) {
+      if (assetRequest) reply.header('Cache-Control', 'no-store')
       return reply.status(404).send(error('not_found', 404, 'not_found'))
     }
 

@@ -1,6 +1,6 @@
 import http from '@/shared/api/http'
 import { encodePath } from '@/shared/lib/path'
-import type { Account } from '@/shared/types'
+import type { Account } from '@/shared/api/types'
 
 export const accountApi = {
   list() {

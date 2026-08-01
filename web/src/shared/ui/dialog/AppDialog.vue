@@ -7,7 +7,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/shared/ui/dialog'
+} from './dialog-parts'
 import { cn } from '@/shared/lib/utils'
 
 const open = defineModel<boolean>('open', { default: false })
@@ -19,14 +19,19 @@ const props = withDefaults(
     class?: HTMLAttributes['class']
     contentClass?: HTMLAttributes['class']
   }>(),
-  {},
+  {}
 )
 </script>
 
 <template>
   <DialogRoot v-model:open="open">
     <DialogContent
-      :class="cn('max-h-[calc(100svh-1rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden p-4 sm:max-h-[calc(100svh-2rem)] sm:max-w-lg sm:p-6', props.contentClass || props.class)"
+      :class="
+        cn(
+          'max-h-[calc(100svh-1rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden p-4 sm:max-h-[calc(100svh-2rem)] sm:max-w-lg sm:p-6',
+          props.contentClass || props.class
+        )
+      "
     >
       <DialogHeader v-if="title || description || $slots.header">
         <slot name="header">
@@ -37,7 +42,7 @@ const props = withDefaults(
 
       <div class="min-h-0 touch-pan-y overflow-y-auto overscroll-contain px-0.5">
         <div class="grid gap-4">
-        <slot />
+          <slot />
         </div>
       </div>
 

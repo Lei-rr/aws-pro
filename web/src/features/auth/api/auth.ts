@@ -6,8 +6,7 @@ export interface SessionState {
 }
 
 export const authApi = {
-  login: (username: string, password: string) =>
-    http.post<SessionState>('/session', { username, password }),
+  login: (username: string, password: string) => http.post<SessionState>('/session', { username, password }),
   logout: () => http.delete('/session'),
   me: () => http.get<SessionState>('/session'),
 }

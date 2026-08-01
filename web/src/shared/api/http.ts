@@ -6,7 +6,7 @@
  * - supports { params }
  * - 401 → unauthorizedHandler
  */
-import type { ApiResponse } from '@/shared/types'
+import type { ApiResponse } from '@/shared/api/types'
 
 export type RequestError = Error & { code: string; details: unknown; status: number }
 
@@ -55,7 +55,7 @@ async function parseBody(response: Response): Promise<unknown> {
 
 function toRequestError(
   message: string,
-  init: { code?: string; details?: unknown; status?: number } = {},
+  init: { code?: string; details?: unknown; status?: number } = {}
 ): RequestError {
   const error = new Error(message) as RequestError
   error.code = init.code || 'REQUEST_FAILED'
@@ -64,11 +64,7 @@ function toRequestError(
   return error
 }
 
-async function request<T = unknown>(
-  method: string,
-  url: string,
-  config: RequestConfig = {},
-): Promise<ApiResponse<T>> {
+async function request<T = unknown>(method: string, url: string, config: RequestConfig = {}): Promise<ApiResponse<T>> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), config.timeout ?? DEFAULT_TIMEOUT_MS)
   if (config.signal) {

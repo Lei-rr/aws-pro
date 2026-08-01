@@ -1,0 +1,130 @@
+[
+  {
+    "method": "GET",
+    "path": "/api/accounts"
+  },
+  {
+    "method": "POST",
+    "path": "/api/accounts"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/accounts/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/accounts/:id"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/accounts/:id"
+  },
+  {
+    "method": "POST",
+    "path": "/api/billing/yearly"
+  },
+  {
+    "method": "GET",
+    "path": "/api/config"
+  },
+  {
+    "method": "GET",
+    "path": "/api/ec2/create-options"
+  },
+  {
+    "method": "GET",
+    "path": "/api/ec2/instances"
+  },
+  {
+    "method": "POST",
+    "path": "/api/ec2/instances"
+  },
+  {
+    "method": "POST",
+    "path": "/api/ec2/instances/:instance/actions"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/ec2/instances/:instance/remark"
+  },
+  {
+    "method": "POST",
+    "path": "/api/ec2/instances/sync"
+  },
+  {
+    "method": "GET",
+    "path": "/api/health"
+  },
+  {
+    "method": "GET",
+    "path": "/api/lightsail/create-options"
+  },
+  {
+    "method": "GET",
+    "path": "/api/lightsail/instances"
+  },
+  {
+    "method": "POST",
+    "path": "/api/lightsail/instances"
+  },
+  {
+    "method": "POST",
+    "path": "/api/lightsail/instances/:instance/actions"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/lightsail/instances/:instance/remark"
+  },
+  {
+    "method": "POST",
+    "path": "/api/lightsail/instances/sync"
+  },
+  {
+    "method": "POST",
+    "path": "/api/newbie/tasks"
+  },
+  {
+    "method": "GET",
+    "path": "/api/newbie/tasks/:task"
+  },
+  {
+    "method": "POST",
+    "path": "/api/newbie/tasks/:task/cancel"
+  },
+  {
+    "method": "GET",
+    "path": "/api/newbie/tasks/:task/stream"
+  },
+  {
+    "method": "GET",
+    "path": "/api/newbie/tasks/active"
+  },
+  {
+    "method": "GET",
+    "path": "/api/newbie/tasks/recent"
+  },
+  {
+    "method": "POST",
+    "path": "/api/quotas/vcpu"
+  },
+  {
+    "method": "GET",
+    "path": "/api/regions"
+  },
+  {
+    "method": "POST",
+    "path": "/api/regions/enable"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/session"
+  },
+  {
+    "method": "GET",
+    "path": "/api/session"
+  },
+  {
+    "method": "POST",
+    "path": "/api/session"
+  }
+]

@@ -11,14 +11,7 @@ async function onCopy() {
 </script>
 
 <template>
-  <Button
-    type="button"
-    variant="ghost"
-    size="icon"
-    class="size-7 shrink-0"
-    title="复制"
-    @click.stop="onCopy"
-  >
+  <Button type="button" variant="ghost" size="icon" class="size-7 shrink-0" title="复制" @click.stop="onCopy">
     <Copy class="size-3.5" />
   </Button>
 </template>
