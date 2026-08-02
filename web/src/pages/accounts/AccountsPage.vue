@@ -90,25 +90,30 @@ async function save() {
     toast.warning('请完整填写服务商 ID、Access Key 和 Secret Key')
     return
   }
+  // 提交前快照：成功后只读快照，避免弹窗关闭/重开编辑另一账号时污染列表
+  const originalId = form.original_id
+  const id = form.id
+  const accessKey = form.access_key
+  const secretKey = form.secret_key
+  const remark = form.remark
   saving.value = true
   try {
-    const payload: Partial<Account> & { original_id?: string } = { ...form }
-    delete payload.original_id
-    if (form.original_id && !payload.secret_key) delete payload.secret_key
-    const response = await accountApi.save(form.original_id ? { ...payload, original_id: form.original_id } : payload)
+    const payload: Partial<Account> = { id, access_key: accessKey, secret_key: secretKey, remark }
+    if (originalId && !secretKey) delete payload.secret_key
+    const response = await accountApi.save(originalId ? { ...payload, original_id: originalId } : payload)
     const saved = apiObject<Account>(response, { id: '', access_key: '' })
-    if (form.original_id) {
+    if (originalId) {
       setAccounts(
         accounts.value.map((row) => {
-          if (row.id !== form.original_id) return row
+          if (row.id !== originalId) return row
           return {
             ...row,
             ...(saved || {}),
-            id: saved?.id || form.id,
-            access_key: saved?.access_key || form.access_key,
-            remark: saved?.remark ?? form.remark,
+            id: saved?.id || id,
+            access_key: saved?.access_key || accessKey,
+            remark: saved?.remark ?? remark,
             secret_key_masked:
-              saved?.secret_key_masked || row.secret_key_masked || (form.secret_key ? '••••' : row.secret_key_masked),
+              saved?.secret_key_masked || row.secret_key_masked || (secretKey ? '••••' : row.secret_key_masked),
           }
         })
       )

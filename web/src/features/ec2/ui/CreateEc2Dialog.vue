@@ -10,6 +10,7 @@ import { ec2Api } from '@/features/ec2/api/ec2'
 import { apiObject } from '@/shared/api/http'
 import { toast } from '@/shared/lib/toast'
 import { errorMessage } from '@/shared/lib/errors'
+import { createScopeGeneration } from '@/shared/lib/scope-generation'
 import { regionName } from '@/shared/lib/format'
 
 const open = defineModel<boolean>('open', { default: false })
@@ -23,7 +24,8 @@ const emit = defineEmits<{ created: [] }>()
 const loading = ref(false)
 const creating = ref(false)
 const optionsError = ref('')
-let optionsRequestToken = 0
+// 弹窗代际：关闭时 invalidate，旧请求响应只认自己 generation，避免关闭-重开 ABA
+const dialogGeneration = createScopeGeneration()
 const options = ref<{ amis: Record<string, string>; instance_types: Record<string, string> }>({
   amis: {},
   instance_types: {},
@@ -51,12 +53,12 @@ const amiEntries = computed(() => Object.entries(options.value.amis || {}))
 const typeEntries = computed(() => Object.entries(options.value.instance_types || {}))
 
 async function loadOptions() {
-  const token = ++optionsRequestToken
+  const owner = dialogGeneration.claim()
   optionsError.value = ''
   loading.value = true
   try {
     const response = await ec2Api.createOptions()
-    if (token !== optionsRequestToken || !open.value) return
+    if (!owner.active() || !open.value) return
     options.value = (apiObject(response) as typeof options.value) || { amis: {}, instance_types: {} }
     if (!options.value.amis[form.value.ami]) {
       form.value.ami = Object.keys(options.value.amis)[0] || form.value.ami
@@ -65,17 +67,17 @@ async function loadOptions() {
       form.value.instance_type = Object.keys(options.value.instance_types)[0] || form.value.instance_type
     }
   } catch (e) {
-    if (token !== optionsRequestToken || !open.value) return
+    if (!owner.active() || !open.value) return
     options.value = { amis: {}, instance_types: {} }
     optionsError.value = errorMessage(e, '加载 EC2 创建配置失败')
   } finally {
-    if (token === optionsRequestToken) loading.value = false
+    if (owner.active()) loading.value = false
   }
 }
 
 watch(open, (v) => {
   if (!v) {
-    optionsRequestToken += 1
+    dialogGeneration.invalidate()
     loading.value = false
     creating.value = false
     openedScope.value = ''
@@ -97,8 +99,9 @@ watch(
 
 async function submit() {
   if (creating.value || loading.value) return
-  const owner = openedScope.value
-  if (!open.value || owner !== `${props.accountId}::${props.region}`) return
+  const owner = dialogGeneration.claim()
+  const scopeOwner = openedScope.value
+  if (!open.value || scopeOwner !== `${props.accountId}::${props.region}`) return
   form.value.name = form.value.name.trim()
   if (!form.value.name || !form.value.ami || !form.value.instance_type) {
     toast.warning('请完整填写 EC2 创建配置')
@@ -113,16 +116,28 @@ async function submit() {
         region: props.region,
       })
     ) as { warnings?: Array<{ message?: string }> }
-    if (!open.value || owner !== openedScope.value || owner !== `${props.accountId}::${props.region}`) return
+    if (
+      !owner.active() ||
+      !open.value ||
+      scopeOwner !== openedScope.value ||
+      scopeOwner !== `${props.accountId}::${props.region}`
+    )
+      return
     open.value = false
     toast.success('EC2 创建命令已提交')
     for (const warning of response.warnings || []) toast.warning(warning.message || '创建成功，但列表同步失败')
     emit('created')
   } catch (e) {
-    if (!open.value || owner !== openedScope.value || owner !== `${props.accountId}::${props.region}`) return
+    if (
+      !owner.active() ||
+      !open.value ||
+      scopeOwner !== openedScope.value ||
+      scopeOwner !== `${props.accountId}::${props.region}`
+    )
+      return
     toast.error(errorMessage(e, '创建 EC2 失败'))
   } finally {
-    if (owner === openedScope.value) creating.value = false
+    if (owner.active()) creating.value = false
   }
 }
 </script>

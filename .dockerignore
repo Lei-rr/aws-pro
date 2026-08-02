@@ -7,5 +7,7 @@ data/
 .github/
 .idea/
 .vscode/
+.env
+.env.*
 *.log
 tmp/

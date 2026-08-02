@@ -57,7 +57,7 @@ npm start
 admin / admin
 ```
 
-请登录后修改生产环境账号密码。已有配置不会被覆盖。
+登录凭据直接来自 `data/config.json`，程序不提供「登录后修改密码」功能。修改生产环境账号密码请：停止服务 → 手工编辑 `data/config.json` 中的 `auth.username` / `auth.password` → 重启服务。已有配置不会被覆盖；配置损坏（`auth.username` / `auth.password` 缺失或为空）时登录会被拒绝。
 
 Session 密钥优先读取 `SESSION_SECRET`；未设置时自动生成并持久化到 `data/session-secret`。部署升级必须保留该文件。
 

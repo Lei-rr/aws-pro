@@ -8,6 +8,8 @@ import { BudgetsClient } from '@aws-sdk/client-budgets'
 import { CostExplorerClient } from '@aws-sdk/client-cost-explorer'
 import { ServiceQuotasClient } from '@aws-sdk/client-service-quotas'
 import { AccountClient } from '@aws-sdk/client-account'
+import { NodeHttpHandler } from '@smithy/node-http-handler'
+import { getDefaultHttpTimeout } from '../http/base.client.js'
 import type { AwsAccount } from './aws.types.js'
 
 function creds(account: AwsAccount) {
@@ -18,11 +20,17 @@ function creds(account: AwsAccount) {
 }
 
 function base(account: AwsAccount, region: string) {
+  const timeout = getDefaultHttpTimeout()
   return {
     region,
     credentials: creds(account),
     maxAttempts: 3,
-    requestHandler: undefined,
+    requestHandler: new NodeHttpHandler({
+      connectionTimeout: timeout,
+      requestTimeout: timeout,
+      socketTimeout: timeout,
+      throwOnRequestTimeout: true,
+    }),
   }
 }
 

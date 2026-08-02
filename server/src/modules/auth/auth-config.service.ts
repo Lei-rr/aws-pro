@@ -5,9 +5,10 @@ export class AuthConfig {
 
   async getCredentials(): Promise<{ username: string; password: string }> {
     const data = await this.repository.read()
-    const username = String(data.auth?.username || '').trim() || 'admin'
-    const password = String(data.auth?.password || '').trim() || 'admin'
-    return { username, password }
+    return {
+      username: data.auth.username.trim(),
+      password: data.auth.password.trim(),
+    }
   }
 
   async verifyCredentials(username: string, password: string): Promise<boolean> {

@@ -17,7 +17,6 @@ export function useListPage(options: { pageSizeScope: string; defaultPageSize?: 
   const pageSize = ref(loadPageSize(options.pageSizeScope, options.defaultPageSize ?? 20))
   let requestVersion = 0
   let refreshVersion = 0
-  let activeLoads = 0
   let disposed = false
 
   function claimLoad(refresh?: boolean) {
@@ -32,14 +31,12 @@ export function useListPage(options: { pageSizeScope: string; defaultPageSize?: 
 
   async function trackedLoad(refresh?: boolean) {
     const owner = claimLoad(refresh)
-    activeLoads += 1
     if (!disposed) loading.value = true
     try {
       const result = await options.load({ refresh, isLatest: owner.isLatest })
       return { succeeded: result !== false, isLatest: owner.isLatest }
     } finally {
-      activeLoads -= 1
-      if (!disposed) loading.value = activeLoads > 0
+      if (owner.isLatest()) loading.value = false
     }
   }
 

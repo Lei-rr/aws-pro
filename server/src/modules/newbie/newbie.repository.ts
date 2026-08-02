@@ -205,8 +205,12 @@ export class NewbieTaskRepository {
     return result
   }
 
-  async failUnlessCancelling(id: string, message: string, workerToken: string): Promise<'failed' | 'cancelled' | null> {
-    let outcome: 'failed' | 'cancelled' = 'failed'
+  async failUnlessCancelling(
+    id: string,
+    message: string,
+    workerToken: string
+  ): Promise<'failed' | 'cancelled' | 'retained' | null> {
+    let outcome: 'failed' | 'cancelled' | 'retained' = 'failed'
     let updated = false
     await this.store.transaction((current) => ({
       next: {
@@ -214,6 +218,27 @@ export class NewbieTaskRepository {
           if (!this.isOwner(task, id, workerToken)) return task
           updated = true
           const cancelling = task.status === 'cancelling'
+          const hasResources = Object.keys(task.resources ?? {}).length > 0
+          if (hasResources) {
+            // Resources were checkpointed but cleanup is not guaranteed: keep the task
+            // resumable so a later worker (restart or poll) retries cleanup.
+            outcome = 'retained'
+            const finalLine = `资源清理尚未完成：${message}。系统将自动重试清理。`
+            const previous = task.logs ?? []
+            const logs = [...previous, finalLine].slice(-2000)
+            return {
+              ...task,
+              status: (cancelling ? 'cancelling' : 'running') as 'cancelling' | 'running',
+              message: finalLine.slice(0, 240),
+              phase: 'cleaning' as const,
+              logs,
+              log_start_seq: this.logStartSeq(task) + Math.max(0, previous.length + 1 - logs.length),
+              next_log_seq: this.nextLogSeq(task) + 1,
+              worker_token: undefined,
+              worker_lease_until: undefined,
+              updated_at: Date.now(),
+            }
+          }
           outcome = cancelling ? 'cancelled' : 'failed'
           const finalLine = cancelling ? '任务已终止：终止请求已接受。' : `任务失败：${message}`
           const previous = task.logs ?? []
@@ -234,6 +259,35 @@ export class NewbieTaskRepository {
       },
     }))
     return updated ? outcome : null
+  }
+
+  /** Keep a task with persisted resources active for a later cleanup retry. */
+  async retainCleanupPending(id: string, message: string, workerToken: string): Promise<void> {
+    let updated = false
+    await this.store.transaction((current) => ({
+      next: {
+        items: (current.items ?? []).map((task) => {
+          if (!this.isOwner(task, id, workerToken)) return task
+          updated = true
+          const finalLine = `资源清理失败，将自动重试：${message}`
+          const previous = task.logs ?? []
+          const logs = [...previous, finalLine].slice(-2000)
+          return {
+            ...task,
+            status: (task.status === 'cancelling' ? 'cancelling' : 'running') as 'cancelling' | 'running',
+            message: finalLine.slice(0, 240),
+            phase: 'cleaning' as const,
+            logs,
+            log_start_seq: this.logStartSeq(task) + Math.max(0, previous.length + 1 - logs.length),
+            next_log_seq: this.nextLogSeq(task) + 1,
+            worker_token: undefined,
+            worker_lease_until: undefined,
+            updated_at: Date.now(),
+          }
+        }),
+      },
+    }))
+    if (!updated) throw new NewbieTaskLeaseLostException()
   }
 
   async updateStatus(id: string, status: NewbieTask['status'], message?: string, workerToken?: string): Promise<void> {

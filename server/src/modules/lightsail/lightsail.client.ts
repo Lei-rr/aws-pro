@@ -20,7 +20,7 @@ import type { AwsAccount, LightsailInstance } from '../../shared/aws/aws.types.j
 import { ApiError } from '../../shared/http/api-error.js'
 import { AwsClientFactory } from '../../shared/aws/aws-client.factory.js'
 import { awsCall } from '../../shared/aws/aws-error.js'
-import { withAwsRetry } from '../../shared/aws/aws-retry.js'
+import { isAwsErrorCode, withAwsRetry } from '../../shared/aws/aws-retry.js'
 import { providerString } from '../../shared/lib/scalar.js'
 
 function rootPasswordUserData(password: string) {
@@ -240,8 +240,9 @@ export class LightsailProvider {
         const result = await client.send(new GetStaticIpCommand({ staticIpName }))
         const ip = result.staticIp ?? {}
         if (!ip.isAttached || !ip.attachedTo) return
-      } catch {
-        return
+      } catch (error) {
+        if (isAwsErrorCode(error, ['NotFoundException'])) return
+        throw error
       }
       await new Promise((r) => setTimeout(r, 2000))
     }

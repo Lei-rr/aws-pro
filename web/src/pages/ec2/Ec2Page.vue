@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Copy, Plus, RefreshCw } from '@lucide/vue'
 import { AccountSelect } from '@/features/accounts'
 import { RegionSelect } from '@/features/config'
@@ -17,6 +17,7 @@ import { toast } from '@/shared/lib/toast'
 import { errorMessage } from '@/shared/lib/errors'
 import { copyText } from '@/shared/lib/clipboard'
 import { useListPage } from '@/shared/lib/use-list-page'
+import { createScopeGeneration, type ScopeOwner } from '@/shared/lib/scope-generation'
 import { confirmDialog } from '@/shared/ui/confirm'
 import { regionName } from '@/shared/lib/format'
 import type { AwsInstance } from '@/shared/api/types'
@@ -27,6 +28,16 @@ const actionLoadingLabel = ref('')
 const accountId = ref('')
 const region = ref('')
 const instances = ref<AwsInstance[]>([])
+const syncGeneration = createScopeGeneration()
+const actionGeneration = createScopeGeneration()
+let activeActionToastId: string | number | undefined
+
+type InstanceActionScope = {
+  accountId: string
+  region: string
+  instanceId: string
+  action: string
+}
 
 function patchSyncedScope(result: { instances?: AwsInstance[]; account_id?: string; region?: string }) {
   if (!Array.isArray(result.instances) || !result.account_id || !result.region) return
@@ -68,6 +79,8 @@ const { loading, refreshing, runLoad, fail } = useListPage({
 const createOpen = ref(false)
 const remarkOpen = ref(false)
 const remarkSaving = ref(false)
+// 备注弹窗代际：关闭时 invalidate，旧保存响应只认自己 generation + 实例 identity，避免同 scope 关闭-重开 ABA
+const remarkGeneration = createScopeGeneration()
 const remarkForm = reactive({
   account_id: '',
   region: '',
@@ -83,6 +96,13 @@ const regions = computed(
 const busy = computed(() => loading.value || syncing.value || !!actionLoadingKey.value)
 
 watch([accountId, region], () => {
+  syncGeneration.invalidate()
+  actionGeneration.invalidate()
+  if (activeActionToastId !== undefined) toast.dismiss(activeActionToastId)
+  activeActionToastId = undefined
+  syncing.value = false
+  actionLoadingKey.value = ''
+  actionLoadingLabel.value = ''
   createOpen.value = false
   remarkOpen.value = false
   remarkSaving.value = false
@@ -111,8 +131,8 @@ async function sync() {
     toast.warning('已有同步任务正在进行')
     return
   }
-  const scopeAccountId = accountId.value
-  const scopeRegion = region.value
+  const owner = syncGeneration.claim({ accountId: accountId.value, region: region.value })
+  const { accountId: scopeAccountId, region: scopeRegion } = owner.value
   syncing.value = true
   try {
     const result = apiObject(await syncScope(scopeAccountId, scopeRegion)) as {
@@ -121,14 +141,14 @@ async function sync() {
       account_id?: string
       region?: string
     }
-    if (scopeAccountId !== accountId.value || scopeRegion !== region.value) return
+    if (!owner.active() || scopeAccountId !== accountId.value || scopeRegion !== region.value) return
     patchSyncedScope(result)
     toast.success(`同步完成，共 ${result.count ?? 0} 台 EC2`)
   } catch (e) {
-    if (scopeAccountId !== accountId.value || scopeRegion !== region.value) return
+    if (!owner.active() || scopeAccountId !== accountId.value || scopeRegion !== region.value) return
     toast.error(errorMessage(e, '同步 EC2 失败'))
   } finally {
-    syncing.value = false
+    if (owner.active()) syncing.value = false
   }
 }
 
@@ -160,10 +180,16 @@ async function operate(row: AwsInstance, action: string) {
     openRemark(row)
     return
   }
-  if (syncing.value) {
-    toast.warning('已有同步任务正在进行')
+  if (syncing.value || actionLoadingKey.value) {
+    toast.warning(syncing.value ? '已有同步任务正在进行' : '已有 EC2 操作正在进行')
     return
   }
+  const owner = actionGeneration.claim({
+    accountId: accountId.value,
+    region: region.value,
+    instanceId: String(row.id),
+    action,
+  })
   const name = ACTION_NAMES[action] || action
   const risk = ACTION_RISKS[action] || ''
   const ok = await confirmDialog({
@@ -173,26 +199,36 @@ async function operate(row: AwsInstance, action: string) {
     cancelText: '取消',
     destructive: ['terminate', 'open_ports', 'release_static_ip'].includes(action),
   })
-  if (!ok) return
-  await runAction(row, action)
+  if (
+    !ok ||
+    !owner.active() ||
+    owner.value.accountId !== accountId.value ||
+    owner.value.region !== region.value ||
+    String(row.account_id) !== owner.value.accountId ||
+    String(row.region) !== owner.value.region ||
+    String(row.id) !== owner.value.instanceId
+  )
+    return
+  await runAction(row, action, owner)
 }
 
-async function syncAfterAction(scopeAccountId: string, targetRegion: string) {
+async function syncAfterAction(owner: ScopeOwner<InstanceActionScope>) {
+  const { accountId: scopeAccountId, region: targetRegion } = owner.value
   try {
     const result = apiObject(await syncScope(scopeAccountId, targetRegion)) as {
       instances?: AwsInstance[]
       account_id?: string
       region?: string
     }
-    if (scopeAccountId !== accountId.value || targetRegion !== region.value) return
+    if (!owner.active() || scopeAccountId !== accountId.value || targetRegion !== region.value) return
     patchSyncedScope(result)
   } catch (error) {
-    if (scopeAccountId !== accountId.value || targetRegion !== region.value) return
+    if (!owner.active() || scopeAccountId !== accountId.value || targetRegion !== region.value) return
     toast.warning(errorMessage(error, '操作已提交，但同步列表失败'))
   }
 }
 
-async function runAction(row: AwsInstance, action: string) {
+async function runAction(row: AwsInstance, action: string, owner: ScopeOwner<InstanceActionScope>) {
   const key = `${row.id}:${action}`
   if (actionLoadingKey.value) {
     toast.warning('已有 EC2 操作正在进行')
@@ -203,6 +239,7 @@ async function runAction(row: AwsInstance, action: string) {
   actionLoadingKey.value = key
   actionLoadingLabel.value = `${name}中`
   const loadingToastId = toast.loading(`正在${name} ${target}…`)
+  activeActionToastId = loadingToastId
   try {
     const response = await ec2Api.action({
       instance_id: row.id,
@@ -211,22 +248,26 @@ async function runAction(row: AwsInstance, action: string) {
       action,
       confirm: action,
     })
-    toast.dismiss(loadingToastId)
+    if (!owner.active()) return
     toast.success((apiObject(response) as { message?: string }).message || `${name}已提交`)
     if (action === 'terminate') {
       instances.value = instances.value.filter((item) => rowKey(item) !== rowKey(row))
     }
-    await syncAfterAction(String(row.account_id), String(row.region))
+    await syncAfterAction(owner)
   } catch (e) {
-    toast.dismiss(loadingToastId)
-    toast.error(errorMessage(e, `${name}失败`))
+    if (owner.active()) toast.error(errorMessage(e, `${name}失败`))
   } finally {
-    actionLoadingKey.value = ''
-    actionLoadingLabel.value = ''
+    toast.dismiss(loadingToastId)
+    if (activeActionToastId === loadingToastId) activeActionToastId = undefined
+    if (owner.active()) {
+      actionLoadingKey.value = ''
+      actionLoadingLabel.value = ''
+    }
   }
 }
 
 function openRemark(row: AwsInstance) {
+  remarkGeneration.invalidate()
   remarkForm.account_id = String(row.account_id || '')
   remarkForm.region = String(row.region || '')
   remarkForm.instance_id = String(row.id || '')
@@ -235,20 +276,36 @@ function openRemark(row: AwsInstance) {
   remarkOpen.value = true
 }
 
+watch(remarkOpen, (v) => {
+  if (!v) {
+    remarkGeneration.invalidate()
+    remarkSaving.value = false
+  }
+})
+
 async function saveRemark() {
   if (remarkSaving.value) return
-  const owner = `${remarkForm.account_id}::${remarkForm.region}`
-  if (!remarkOpen.value || owner !== `${accountId.value}::${region.value}`) return
-  remarkForm.remark = remarkForm.remark.trim()
+  const owner = remarkGeneration.claim()
+  const ownerAccountId = remarkForm.account_id
+  const ownerRegion = remarkForm.region
+  const ownerInstanceId = remarkForm.instance_id
+  const remark = remarkForm.remark.trim()
+  const ownerKey = `${ownerAccountId}::${ownerRegion}::${ownerInstanceId}`
+  if (!remarkOpen.value || ownerKey !== `${accountId.value}::${region.value}::${remarkForm.instance_id}`) return
   remarkSaving.value = true
   try {
     const response = await ec2Api.updateRemark({
-      account_id: remarkForm.account_id,
-      region: remarkForm.region,
-      instance_id: remarkForm.instance_id,
-      remark: remarkForm.remark,
+      account_id: ownerAccountId,
+      region: ownerRegion,
+      instance_id: ownerInstanceId,
+      remark,
     })
-    if (!remarkOpen.value || owner !== `${accountId.value}::${region.value}`) return
+    if (
+      !owner.active() ||
+      !remarkOpen.value ||
+      ownerKey !== `${accountId.value}::${region.value}::${remarkForm.instance_id}`
+    )
+      return
     const updated = apiObject(response) as AwsInstance
     instances.value = instances.value.map((item) => {
       if (item.account_id === updated.account_id && item.region === updated.region && item.id === updated.id) {
@@ -259,9 +316,11 @@ async function saveRemark() {
     remarkOpen.value = false
     toast.success('备注已保存')
   } catch (e) {
-    if (owner === `${accountId.value}::${region.value}`) toast.error(errorMessage(e, '备注保存失败'))
+    if (owner.active() && ownerKey === `${accountId.value}::${region.value}::${remarkForm.instance_id}`)
+      toast.error(errorMessage(e, '备注保存失败'))
   } finally {
-    if (owner === `${accountId.value}::${region.value}`) remarkSaving.value = false
+    if (owner.active() && ownerKey === `${accountId.value}::${region.value}::${remarkForm.instance_id}`)
+      remarkSaving.value = false
   }
 }
 
@@ -294,6 +353,11 @@ onMounted(async () => {
     toast.error(errorMessage(e, '加载 EC2 配置失败'))
   }
   await runLoad()
+})
+onBeforeUnmount(() => {
+  syncGeneration.invalidate()
+  actionGeneration.invalidate()
+  if (activeActionToastId !== undefined) toast.dismiss(activeActionToastId)
 })
 </script>
 

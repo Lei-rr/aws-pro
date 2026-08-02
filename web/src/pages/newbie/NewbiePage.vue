@@ -35,6 +35,7 @@ let pollTimer: ReturnType<typeof setTimeout> | null = null
 let lastLogSeq = 0
 let watchVersion = 0
 let restoreVersion = 0
+let disposed = false
 
 const canStart = computed(() => !!accountId.value && !running.value)
 const selectedStepLabel = computed(() => stepOptions.find((i) => i.value === step.value)?.label || step.value)
@@ -100,9 +101,11 @@ function stopWatching() {
 }
 
 async function pollTask(taskId: string, version: number) {
+  if (disposed || version !== watchVersion) return
+  if (version !== watchVersion) return
   try {
     const response = await newbieApi.getTask(taskId)
-    if (version !== watchVersion) return
+    if (version !== watchVersion || disposed) return
     const t = apiPayload<NewbieTask>(response)
     if (!t) throw new Error('任务状态响应为空')
     task.value = t
@@ -129,6 +132,7 @@ async function pollTask(taskId: string, version: number) {
 }
 
 function openStream(taskId: string, version: number) {
+  if (disposed) return
   closeStream()
   const stream = new EventSource(newbieApi.streamUrl(taskId, lastLogSeq), { withCredentials: true })
   eventSource = stream
@@ -194,9 +198,10 @@ function humanizeAwsCredentialError(raw: unknown): string {
 
 async function restoreActiveTask() {
   const version = ++restoreVersion
+  if (disposed) return
   try {
     const response = await newbieApi.getRecentTask()
-    if (version !== restoreVersion) return
+    if (disposed || version !== restoreVersion) return
     const t = apiPayload<NewbieTask>(response)
     if (!t?.id) return
     task.value = t
@@ -216,14 +221,14 @@ async function restoreActiveTask() {
       terminalNotified = true
     }
   } catch (e) {
-    if (version !== restoreVersion) return
+    if (disposed || version !== restoreVersion) return
     restoreFailed.value = true
     logs.value = [`任务状态恢复失败：${errorMessage(e, '网络错误')}。请刷新页面重试。`]
   }
 }
 
 async function startTask(ownerAccountId: string, ownerStep: string) {
-  if (loading.value || running.value) return
+  if (disposed || loading.value || running.value) return
   if (ownerAccountId !== accountId.value || ownerStep !== step.value) return
   restoreVersion += 1
   loading.value = true
@@ -235,7 +240,7 @@ async function startTask(ownerAccountId: string, ownerStep: string) {
   task.value = null
   try {
     const response = await newbieApi.createTask({ account_id: ownerAccountId, step: ownerStep })
-    if (ownerAccountId !== accountId.value || ownerStep !== step.value) return
+    if (disposed || ownerAccountId !== accountId.value || ownerStep !== step.value) return
     const created = apiPayload<NewbieTask>(response)
     if (!created) throw new Error('创建成功但任务响应为空')
     task.value = created
@@ -260,7 +265,7 @@ async function startTask(ownerAccountId: string, ownerStep: string) {
     running.value = true
     watchTask(String(created.id))
   } catch (e) {
-    if (ownerAccountId !== accountId.value || ownerStep !== step.value) return
+    if (disposed || ownerAccountId !== accountId.value || ownerStep !== step.value) return
     const msg = errorMessage(e, '创建新手任务失败')
     toast.error(msg)
     appendLog(`创建任务失败：${msg}`)
@@ -294,22 +299,24 @@ async function confirmStart() {
   await startTask(ownerAccountId, ownerStep)
 }
 
-async function cancelTask() {
-  if (!task.value?.id || cancellingRequest.value) return
+async function cancelTask(taskId: string) {
+  if (!taskId || task.value?.id !== taskId || cancellingRequest.value) return
   cancellingRequest.value = true
   try {
-    const response = await newbieApi.cancelTask(String(task.value.id))
+    const response = await newbieApi.cancelTask(taskId)
+    if (task.value?.id !== taskId) return
     task.value = apiPayload<NewbieTask>(response)
     appendLog('已发送终止请求，等待当前步骤停止并清理资源...')
   } catch (e) {
-    toast.error(errorMessage(e, '终止新手任务失败'))
+    if (task.value?.id === taskId) toast.error(errorMessage(e, '终止新手任务失败'))
   } finally {
-    cancellingRequest.value = false
+    if (task.value?.id === taskId) cancellingRequest.value = false
   }
 }
 
 async function confirmCancel() {
-  if (!task.value?.id || !running.value) return
+  const taskId = String(task.value?.id || '')
+  if (!taskId || !running.value) return
   if (
     !(await confirmDialog({
       title: '确认终止新手任务',
@@ -319,7 +326,8 @@ async function confirmCancel() {
     }))
   )
     return
-  await cancelTask()
+  if (!running.value || task.value?.id !== taskId) return
+  await cancelTask(taskId)
 }
 
 function clearLog() {
@@ -327,8 +335,15 @@ function clearLog() {
   lastLogSeq = 0
 }
 
-onMounted(() => void restoreActiveTask())
-onBeforeUnmount(() => stopWatching())
+onMounted(() => {
+  disposed = false
+  void restoreActiveTask()
+})
+onBeforeUnmount(() => {
+  disposed = true
+  restoreVersion += 1
+  stopWatching()
+})
 </script>
 
 <template>

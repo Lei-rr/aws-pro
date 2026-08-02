@@ -193,8 +193,14 @@ export class NewbieTaskService {
       return
     }
 
-    if (task.status === 'running' && task.phase === 'cleaning' && Object.keys(task.resources ?? {}).length) {
+    if (task.status === 'running' && Object.keys(task.resources ?? {}).length) {
       await this.resumeCleanup(id, task, workerToken)
+      return
+    }
+
+    if (task.status === 'running' && task.phase === 'done') {
+      // Terminal phase was checkpointed before the final status write; just finalize.
+      await this.tasks.completeUnlessCancelling(id, workerToken)
       return
     }
 
@@ -253,7 +259,10 @@ export class NewbieTaskService {
       await logChain.catch(() => undefined)
       if (error instanceof NewbieTaskLeaseLostException) return
       const msg = error instanceof Error ? error.message : String(error)
-      await this.tasks.failUnlessCancelling(id, msg, workerToken)
+      const outcome = await this.tasks.failUnlessCancelling(id, msg, workerToken)
+      if (outcome === 'retained') {
+        setTimeout(() => this.ensureBackground(id), 30_000).unref()
+      }
     }
   }
 
@@ -291,11 +300,10 @@ export class NewbieTaskService {
       await logChain.catch(() => undefined)
       if (error instanceof NewbieTaskLeaseLostException) return
       const msg = error instanceof Error ? error.message : String(error)
-      await this.tasks
-        .finalizeCleanup(id, workerToken, 'failed', msg, `任务失败：恢复清理失败：${msg}`)
-        .catch((finalizeError) => {
-          if (!(finalizeError instanceof NewbieTaskLeaseLostException)) throw finalizeError
-        })
+      await this.tasks.retainCleanupPending(id, msg, workerToken).catch((retainError) => {
+        if (!(retainError instanceof NewbieTaskLeaseLostException)) throw retainError
+      })
+      setTimeout(() => this.ensureBackground(id), 30_000).unref()
     }
   }
 

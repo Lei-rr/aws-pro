@@ -27,10 +27,26 @@ export class AccountRemovalWorkflow {
           await this.ec2.deleteByAccount(id)
           await this.accounts.deleteRecord(id)
         } catch (error) {
-          await Promise.allSettled([
+          const settled = await Promise.allSettled([
             this.lightsail.replaceAccount(id, lightsailSnapshot),
             this.ec2.replaceAccount(id, ec2Snapshot),
           ])
+          const cleanupErrors = settled
+            .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+            .map((result) => result.reason)
+          if (cleanupErrors.length > 0) {
+            const details = cleanupErrors
+              .map((reason) => (reason instanceof Error ? reason.message : String(reason)))
+              .join('; ')
+            throw Object.assign(
+              new Error(
+                `Account removal failed and instance-cache restore also failed: ${
+                  error instanceof Error ? error.message : String(error)
+                }; restore errors: ${details}`
+              ),
+              { cause: error, cleanupErrors }
+            )
+          }
           throw error
         }
       })

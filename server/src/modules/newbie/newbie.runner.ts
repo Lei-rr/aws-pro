@@ -163,22 +163,22 @@ export class NewbieTaskRunner {
         if (id) await this.terminateEc2Instance(ec2, id, log, assertOwnership)
       })
     }
-    if (resources.lambda_function_name || resources.lambda_role_name) {
+    if (resources.lambda_function_name) {
       await attempt(async () => {
-        if (resources.lambda_function_name) {
-          await assertOwnership()
-          await this.deleteLambdaFunction(
-            this.clients.lambda(account, REGION),
-            resources.lambda_function_name,
-            log,
-            assertOwnership
-          )
-        }
-        if (resources.lambda_role_name) {
-          await this.sleep(POLL_MS)
-          await assertOwnership()
-          await this.deleteIamRole(this.clients.iam(account), resources.lambda_role_name, log, assertOwnership)
-        }
+        await assertOwnership()
+        await this.deleteLambdaFunction(
+          this.clients.lambda(account, REGION),
+          resources.lambda_function_name!,
+          log,
+          assertOwnership
+        )
+      })
+    }
+    if (resources.lambda_role_name) {
+      await attempt(async () => {
+        await this.sleep(POLL_MS)
+        await assertOwnership()
+        await this.deleteIamRole(this.clients.iam(account), resources.lambda_role_name!, log, assertOwnership)
       })
     }
     if (resources.rds_identifier) {
@@ -767,15 +767,13 @@ export class NewbieTaskRunner {
   }
 
   private async rdsExists(rds: any, dbName: string) {
-    for (let i = 0; i < 5; i++) {
-      try {
-        await this.rdsStatus(rds, dbName)
-        return true
-      } catch {
-        await this.sleep(POLL_MS)
-      }
+    try {
+      await this.rdsStatus(rds, dbName)
+      return true
+    } catch (error) {
+      if (isAwsErrorCode(error, ['DBInstanceNotFound', 'DBInstanceNotFoundFault'])) return false
+      throw error
     }
-    return false
   }
 
   private async deleteBudget(
@@ -809,17 +807,15 @@ export class NewbieTaskRunner {
   }
 
   private async budgetExists(budgets: any, accountId: string, name: string) {
-    for (let i = 0; i < 3; i++) {
-      try {
-        await withAwsRetry('describe newbie budget', () =>
-          budgets.send(new DescribeBudgetCommand({ AccountId: accountId, BudgetName: name }))
-        )
-        return true
-      } catch {
-        await this.sleep(POLL_MS)
-      }
+    try {
+      await withAwsRetry('describe newbie budget', () =>
+        budgets.send(new DescribeBudgetCommand({ AccountId: accountId, BudgetName: name }))
+      )
+      return true
+    } catch (error) {
+      if (isAwsErrorCode(error, ['NotFoundException'])) return false
+      throw error
     }
-    return false
   }
 
   private async lambdaFunctionExists(lambda: any, functionName: string) {
