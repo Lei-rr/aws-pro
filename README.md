@@ -134,14 +134,15 @@ echo <GITHUB_TOKEN> | docker login ghcr.io -u <GITHUB_USER> --password-stdin
 ## 架构
 
 ```text
-src/
-  app.ts / server.ts
-  bootstrap/       # 唯一组装点
-  plugins/         # Fastify HTTP 壳
-  modules/         # 单领域业务能力
-  workflows/       # 跨模块业务用例
-  platform/        # 存储、缓存等运行设施
-  shared/          # HTTP、认证、AWS 中立工具
+server/
+  src/
+    app.ts / server.ts
+    bootstrap/       # 唯一组装点
+    plugins/         # Fastify HTTP 壳
+    modules/         # 单领域业务能力
+    workflows/       # 跨模块业务用例
+    platform/        # 存储、缓存等运行设施
+    shared/          # HTTP、认证、AWS 中立工具
 
 web/src/
   app/             # 启动、路由、布局、全局样式
@@ -193,7 +194,7 @@ request.server.ctx.{config, platform, modules, workflows}
 区域中文名和 Lightsail 蓝图目录内置在：
 
 ```text
-src/shared/aws/aws-catalog.ts
+server/src/shared/aws/aws-catalog.ts
 ```
 
 部署必须挂载一个由单个 aws-pro 进程独占的数据目录：

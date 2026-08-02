@@ -20,7 +20,7 @@ const walk = (dir) => {
 }
 const lineAt = (code, position) => code.slice(0, position).split('\n').length
 const report = (rule, file, line, message) => errors.push(`${rule} ${file}:${line} ${message}`)
-const sourceFiles = [...walk('src'), ...walk('web/src')].filter((file) => /\.(?:ts|vue)$/.test(file))
+const sourceFiles = [...walk('server/src'), ...walk('web/src')].filter((file) => /\.(?:ts|vue)$/.test(file))
 
 function scriptsFor(file) {
   const source = read(file)
@@ -69,7 +69,7 @@ for (const file of sourceFiles) {
           imports.push({ from: file, to: target, typeOnly, line: block.offset + lineAt(block.code, node.getStart(sf)) })
       }
       if (
-        file.startsWith('src/') &&
+        file.startsWith('server/src/') &&
         ts.isCallExpression(node) &&
         ts.isPropertyAccessExpression(node.expression) &&
         ts.isIdentifier(node.expression.expression) &&
@@ -92,10 +92,10 @@ for (const file of sourceFiles) {
 }
 
 function backendLayer(file) {
-  if (/^src\/(?:app|server)\.ts$/.test(file)) return 'shell'
-  if (file.startsWith('src/types/')) return 'shared'
+  if (/^server\/src\/(?:app|server)\.ts$/.test(file)) return 'shell'
+  if (file.startsWith('server/src/types/')) return 'shared'
   for (const layer of ['bootstrap', 'plugins', 'workflows', 'modules', 'platform', 'shared'])
-    if (file.startsWith(`src/${layer}/`)) return layer
+    if (file.startsWith(`server/src/${layer}/`)) return layer
   return 'other'
 }
 function webLayer(file) {
@@ -120,13 +120,13 @@ const webAllowed = {
   other: new Set(),
 }
 for (const edge of imports) {
-  if (edge.from.startsWith('src/') && edge.to.startsWith('src/')) {
+  if (edge.from.startsWith('server/src/') && edge.to.startsWith('server/src/')) {
     const from = backendLayer(edge.from),
       to = backendLayer(edge.to)
     if (!backendAllowed[from]?.has(to))
       report('ARCH001', edge.from, edge.line, `${from} must not import ${to}: ${edge.to}`)
-    const fromModule = edge.from.match(/^src\/modules\/([^/]+)/)?.[1]
-    const toModule = edge.to.match(/^src\/modules\/([^/]+)/)?.[1]
+    const fromModule = edge.from.match(/^server\/src\/modules\/([^/]+)/)?.[1]
+    const toModule = edge.to.match(/^server\/src\/modules\/([^/]+)/)?.[1]
     if (fromModule && toModule && fromModule !== toModule)
       report('ARCH002', edge.from, edge.line, `module ${fromModule} must not deep-import module ${toModule}`)
   }
@@ -180,7 +180,7 @@ for (const node of graph.keys()) if (!indices.has(node)) strong(node)
 for (const file of sourceFiles) {
   const code = read(file)
   if (
-    file.startsWith('src/') &&
+    file.startsWith('server/src/') &&
     !file.endsWith('.d.ts') &&
     !/^[a-z0-9]+(?:-[a-z0-9]+)*(?:\.[a-z0-9]+(?:-[a-z0-9]+)*)*\.ts$/.test(path.basename(file))
   )
@@ -189,7 +189,7 @@ for (const file of sourceFiles) {
     report('ARCH007', file, 1, 'Vue filename must be PascalCase')
   if (
     /new JsonStore\s*(?:<|\()/.test(code) &&
-    !['src/bootstrap/create-platform.ts', 'src/bootstrap/create-modules.ts'].includes(file)
+    !['server/src/bootstrap/create-platform.ts', 'server/src/bootstrap/create-modules.ts'].includes(file)
   )
     report('ARCH008', file, 1, 'new JsonStore only in composition root')
   if (/\b(?:CacheTtl|ttlMs|cacheMaxEntries|cacheSweepIntervalMs|globalCache|CacheManager|cacheManager)\b/.test(code))
@@ -197,22 +197,24 @@ for (const file of sourceFiles) {
   if (/\bapp\.(?:get|post|put|patch|delete)\s*\(/.test(code) && !file.endsWith('.routes.ts'))
     report('ARCH010', file, 1, 'routes belong in *.routes.ts')
 }
-if (routeCalls !== 32) report('ARCH011', 'src', 1, `expected 32 routes, found ${routeCalls}`)
-if (schemaRoutes !== routeCalls) report('ARCH012', 'src', 1, `${routeCalls - schemaRoutes} route(s) missing schema`)
+if (routeCalls !== 32) report('ARCH011', 'server/src', 1, `expected 32 routes, found ${routeCalls}`)
+if (schemaRoutes !== routeCalls)
+  report('ARCH012', 'server/src', 1, `${routeCalls - schemaRoutes} route(s) missing schema`)
 for (const file of sourceFiles.filter((f) => f.endsWith('.handlers.ts'))) {
   const code = read(file)
   if (/request-parse\.js/.test(code)) report('ARCH013', file, 1, 'handlers must use schema-derived request types')
   for (const match of code.matchAll(/\b(?:request\.server|app)\.ctx\.([A-Za-z_$][\w$]*)/g))
     if (!['config', 'platform', 'modules', 'workflows'].includes(match[1]))
       report('ARCH014', file, lineAt(code, match.index), `flat ctx.${match[1]} forbidden`)
-  if (file.startsWith('src/modules/') && /\brequest\.server\.ctx\.workflows\b/.test(code))
+  if (file.startsWith('server/src/modules/') && /\brequest\.server\.ctx\.workflows\b/.test(code))
     report('ARCH018', file, 1, 'module handlers must not call workflows')
 }
 for (const legacy of [
-  'src/app-context.ts',
-  'src/compose',
-  'src/config',
-  'src/lib',
+  'src',
+  'server/src/app-context.ts',
+  'server/src/compose',
+  'server/src/config',
+  'server/src/lib',
   'web/src/main.ts',
   'web/src/layouts',
   'web/src/router',
@@ -220,20 +222,20 @@ for (const legacy of [
   'web/src/shared/types',
 ])
   if (exists(legacy)) report('ARCH015', legacy, 1, 'legacy path must be removed')
-const cacheFiles = walk('src/platform/cache')
+const cacheFiles = walk('server/src/platform/cache')
 if (
   cacheFiles.length !== 2 ||
-  !cacheFiles.includes('src/platform/cache/memory-cache.ts') ||
-  !cacheFiles.includes('src/platform/cache/aws-cache.ts')
+  !cacheFiles.includes('server/src/platform/cache/memory-cache.ts') ||
+  !cacheFiles.includes('server/src/platform/cache/aws-cache.ts')
 )
-  report('ARCH016', 'src/platform/cache', 1, 'cache must contain only memory-cache.ts and aws-cache.ts')
+  report('ARCH016', 'server/src/platform/cache', 1, 'cache must contain only memory-cache.ts and aws-cache.ts')
 for (const required of [
-  'src/bootstrap/create-context.ts',
-  'src/bootstrap/create-modules.ts',
-  'src/bootstrap/create-platform.ts',
-  'src/bootstrap/create-workflows.ts',
-  'src/bootstrap/start-context.ts',
-  'src/bootstrap/register-routes.ts',
+  'server/src/bootstrap/create-context.ts',
+  'server/src/bootstrap/create-modules.ts',
+  'server/src/bootstrap/create-platform.ts',
+  'server/src/bootstrap/create-workflows.ts',
+  'server/src/bootstrap/start-context.ts',
+  'server/src/bootstrap/register-routes.ts',
   'web/src/app/bootstrap.ts',
   'web/src/app/router/index.ts',
   'web/src/app/layouts/AppLayout.vue',

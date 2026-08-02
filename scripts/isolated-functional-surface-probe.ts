@@ -10,16 +10,16 @@ const read = (relative: string) => fs.readFileSync(path.join(root, relative), 'u
 const exists = (relative: string) => fs.existsSync(path.join(root, relative))
 
 const routeFiles = [
-  'src/modules/auth/auth.routes.ts',
-  'src/modules/system/system.routes.ts',
-  'src/modules/accounts/account.routes.ts',
-  'src/workflows/account-management/account-removal.routes.ts',
-  'src/modules/lightsail/lightsail.routes.ts',
-  'src/modules/ec2/ec2.routes.ts',
-  'src/modules/regions/region.routes.ts',
-  'src/modules/quota/quota.routes.ts',
-  'src/modules/billing/billing.routes.ts',
-  'src/modules/newbie/newbie.routes.ts',
+  'server/src/modules/auth/auth.routes.ts',
+  'server/src/modules/system/system.routes.ts',
+  'server/src/modules/accounts/account.routes.ts',
+  'server/src/workflows/account-management/account-removal.routes.ts',
+  'server/src/modules/lightsail/lightsail.routes.ts',
+  'server/src/modules/ec2/ec2.routes.ts',
+  'server/src/modules/regions/region.routes.ts',
+  'server/src/modules/quota/quota.routes.ts',
+  'server/src/modules/billing/billing.routes.ts',
+  'server/src/modules/newbie/newbie.routes.ts',
 ]
 const routePattern = /\bapp\.(get|post|put|patch|delete)\(\s*['"]([^'"]+)['"]/g
 const routes: Array<{ method: string; path: string }> = []

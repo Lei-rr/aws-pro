@@ -14,14 +14,15 @@ Do not redesign the project unless the user explicitly changes this contract.
 ## Backend topology
 
 ```text
-src/
-  app.ts / server.ts
-  bootstrap/       composition only
-  plugins/         Fastify plugins only
-  modules/         one-domain capabilities
-  workflows/       business use cases spanning modules
-  platform/        small generic runtime facilities
-  shared/          domain-neutral HTTP/auth/AWS helpers
+server/
+  src/
+    app.ts / server.ts
+    bootstrap/       composition only
+    plugins/         Fastify plugins only
+    modules/         one-domain capabilities
+    workflows/       business use cases spanning modules
+    platform/        small generic runtime facilities
+    shared/          domain-neutral HTTP/auth/AWS helpers
 ```
 
 Dependency direction:
@@ -37,6 +38,7 @@ modules must not import workflows
 - Module services may depend on a narrow shared account lookup contract, not on another module implementation.
 - `bootstrap/` is the only construction root. No service registry, DI container or default `new` dependencies.
 - Fastify handlers use `request.server.ctx.{modules,workflows}` only.
+- Root `src/` is forbidden; backend source lives only in `server/src/`.
 
 ## AWS product invariants
 

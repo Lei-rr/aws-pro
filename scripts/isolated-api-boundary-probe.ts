@@ -3,10 +3,10 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { buildApp } from '../src/app.js'
-import { resolveSessionSecret } from '../src/shared/auth/session-secret.js'
-import { setDataRoot } from '../src/platform/storage/json-store.js'
-import type { AppConfig } from '../src/bootstrap/app-config.js'
+import { buildApp } from '../server/src/app.js'
+import { resolveSessionSecret } from '../server/src/shared/auth/session-secret.js'
+import { setDataRoot } from '../server/src/platform/storage/json-store.js'
+import type { AppConfig } from '../server/src/bootstrap/app-config.js'
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'aws-api-boundary-'))
 try {

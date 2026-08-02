@@ -6,8 +6,8 @@ import {
   invalidateAwsCache,
   parseCacheMode,
   withAwsCache,
-} from '../src/platform/cache/aws-cache.js'
-import { memoryCache } from '../src/platform/cache/memory-cache.js'
+} from '../server/src/platform/cache/aws-cache.js'
+import { memoryCache } from '../server/src/platform/cache/memory-cache.js'
 
 const deferred = <T>() => {
   let resolve!: (value: T) => void

@@ -17,8 +17,8 @@ import { routes as accountRemovalRoutes } from '../workflows/account-management/
 /**
  * HTTP route catalog (append-only).
  *
- * Module = business folder under src/modules/* with routes.ts
- * Plugin  = ONLY src/plugins/* (official Fastify shell)
+ * Module = business folder under server/src/modules/* with routes.ts
+ * Plugin  = ONLY server/src/plugins/* (official Fastify shell)
  *
  * API prefix stays `/api` (frontend baseURL) — not /api/v1.
  *
