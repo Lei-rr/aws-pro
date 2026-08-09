@@ -50,27 +50,13 @@ function patchSyncedScope(result: { instances?: AwsInstance[]; account_id?: stri
 const { loading, refreshing, runLoad, fail } = useListPage({
   pageSizeScope: 'aws-lightsail',
   load: async (options = {}) => {
-    const scopeAccountId = accountId.value
-    const scopeRegion = region.value
     try {
-      const response = await lightsailApi.instances({
-        ...(scopeAccountId ? { account_id: scopeAccountId } : {}),
-        ...(scopeRegion ? { region: scopeRegion } : {}),
-      })
-      if (
-        (options.isLatest && !options.isLatest()) ||
-        scopeAccountId !== accountId.value ||
-        scopeRegion !== region.value
-      )
-        return false
+      // 表格始终显示全部已缓存实例，不按顶部下拉过滤
+      const response = await lightsailApi.instances({})
+      if (options.isLatest && !options.isLatest()) return false
       instances.value = apiList<AwsInstance>(response, ['items'])
     } catch (e) {
-      if (
-        (options.isLatest && !options.isLatest()) ||
-        scopeAccountId !== accountId.value ||
-        scopeRegion !== region.value
-      )
-        return false
+      if (options.isLatest && !options.isLatest()) return false
       fail(e)
       return false
     }
@@ -104,8 +90,7 @@ watch([accountId, region], () => {
   createOpen.value = false
   remarkOpen.value = false
   remarkSaving.value = false
-  instances.value = []
-  if (accountId.value && region.value) void runLoad({ silent: true })
+  // 不再按下拉过滤表格，保持当前全部实例显示
 })
 
 function rowKey(row: AwsInstance) {
