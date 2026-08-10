@@ -9,6 +9,10 @@
   "engines": {
     "node": ">=22.13.0"
   },
+  "overrides": {
+    "less": ">=4.8.1",
+    "image-size": ">=1.2.1"
+  },
   "scripts": {
     "dev": "npm run dev:server",
     "dev:server": "tsx watch server/src/server.ts --port 3023",
