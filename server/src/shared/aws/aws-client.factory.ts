@@ -35,34 +35,69 @@ function base(account: AwsAccount, region: string) {
 }
 
 export class AwsClientFactory {
+  private readonly clientPool = new Map<string, unknown>()
+
+  /** Evict cached SDK clients for a given account when credentials change or account is deleted. */
+  evict(accountId: string): void {
+    const prefix = `${accountId}:`
+    for (const key of this.clientPool.keys()) {
+      if (key.startsWith(prefix)) {
+        const client = this.clientPool.get(key)
+        if (client && typeof (client as { destroy?: () => void }).destroy === 'function') {
+          try {
+            ;(client as { destroy: () => void }).destroy()
+          } catch {
+            // ignore
+          }
+        }
+        this.clientPool.delete(key)
+      }
+    }
+  }
+
+  private getOrCreate<T>(key: string, factory: () => T): T {
+    let client = this.clientPool.get(key) as T | undefined
+    if (!client) {
+      client = factory()
+      this.clientPool.set(key, client)
+    }
+    return client
+  }
+
   lightsail(account: AwsAccount, region: string) {
-    return new LightsailClient(base(account, region))
+    return this.getOrCreate(`${account.id}:lightsail:${region}`, () => new LightsailClient(base(account, region)))
   }
   ec2(account: AwsAccount, region: string) {
-    return new EC2Client(base(account, region))
+    return this.getOrCreate(`${account.id}:ec2:${region}`, () => new EC2Client(base(account, region)))
   }
   budgets(account: AwsAccount) {
-    return new BudgetsClient(base(account, 'us-east-1'))
+    return this.getOrCreate(`${account.id}:budgets:us-east-1`, () => new BudgetsClient(base(account, 'us-east-1')))
   }
   iam(account: AwsAccount) {
-    return new IAMClient(base(account, 'us-east-1'))
+    return this.getOrCreate(`${account.id}:iam:us-east-1`, () => new IAMClient(base(account, 'us-east-1')))
   }
   lambda(account: AwsAccount, region: string) {
-    return new LambdaClient(base(account, region))
+    return this.getOrCreate(`${account.id}:lambda:${region}`, () => new LambdaClient(base(account, region)))
   }
   rds(account: AwsAccount, region: string) {
-    return new RDSClient(base(account, region))
+    return this.getOrCreate(`${account.id}:rds:${region}`, () => new RDSClient(base(account, region)))
   }
   sts(account: AwsAccount) {
-    return new STSClient(base(account, 'us-east-1'))
+    return this.getOrCreate(`${account.id}:sts:us-east-1`, () => new STSClient(base(account, 'us-east-1')))
   }
   costExplorer(account: AwsAccount) {
-    return new CostExplorerClient(base(account, 'us-east-1'))
+    return this.getOrCreate(
+      `${account.id}:costExplorer:us-east-1`,
+      () => new CostExplorerClient(base(account, 'us-east-1'))
+    )
   }
   serviceQuotas(account: AwsAccount, region: string) {
-    return new ServiceQuotasClient(base(account, region))
+    return this.getOrCreate(
+      `${account.id}:serviceQuotas:${region}`,
+      () => new ServiceQuotasClient(base(account, region))
+    )
   }
   account(account: AwsAccount) {
-    return new AccountClient(base(account, 'us-east-1'))
+    return this.getOrCreate(`${account.id}:account:us-east-1`, () => new AccountClient(base(account, 'us-east-1')))
   }
 }

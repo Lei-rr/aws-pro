@@ -20,6 +20,7 @@ export class NewbieTaskService {
 
   /** Resume unfinished tasks after process restart (idempotent). */
   async resumeActiveJobs(): Promise<void> {
+    await this.tasks.recoverStaleActive()
     await this.tasks.pruneFinished()
     const task = await this.tasks.findActive()
     if (task && (task.status === 'pending' || task.status === 'running' || task.status === 'cancelling')) {

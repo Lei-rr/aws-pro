@@ -40,7 +40,7 @@ systemctl restart ssh || systemctl restart sshd || true
 `
 }
 
-function tagName(tags: any[] | undefined) {
+function tagName(tags: Array<{ Key?: string; Value?: string }> | undefined) {
   return providerString((tags ?? []).find((t) => t.Key === 'Name')?.Value)
 }
 
@@ -69,16 +69,18 @@ export class Ec2Provider {
     })
   }
 
-  async createInstance(account: AwsAccount, region: string, data: Record<string, any>) {
+  async createInstance(account: AwsAccount, region: string, data: Record<string, unknown>) {
     return awsCall('ec2.create_instance', async () => {
       const client = this.clients.ec2(account, region)
-      const input: any = {
+      const input: import('@aws-sdk/client-ec2').RunInstancesCommandInput = {
         ImageId: await this.resolveAmi(client, String(data.ami)),
-        InstanceType: data.instance_type,
+        InstanceType: data.instance_type as import('@aws-sdk/client-ec2')._InstanceType,
         MinCount: 1,
         MaxCount: 1,
         MetadataOptions: { HttpTokens: 'required', HttpEndpoint: 'enabled' },
-        TagSpecifications: [{ ResourceType: 'instance', Tags: [{ Key: 'Name', Value: data.name }] }],
+        TagSpecifications: [
+          { ResourceType: 'instance', Tags: [{ Key: 'Name', Value: typeof data.name === 'string' ? data.name : '' }] },
+        ],
       }
       if (data.client_token) input.ClientToken = String(data.client_token)
       if (data.root_password)
@@ -187,7 +189,7 @@ export class Ec2Provider {
   private instanceView(
     account: AwsAccount,
     region: string,
-    instance: any,
+    instance: import('@aws-sdk/client-ec2').Instance,
     staticIps: Record<string, string>
   ): Ec2Instance | null {
     const id = providerString(instance.InstanceId)
@@ -246,15 +248,21 @@ export class Ec2Provider {
     )
   }
 
-  private async authorize(client: EC2Client, direction: 'ingress' | 'egress', groupId: string, perms: any[]) {
+  private async authorize(
+    client: EC2Client,
+    direction: 'ingress' | 'egress',
+    groupId: string,
+    perms: import('@aws-sdk/client-ec2').IpPermission[]
+  ) {
     try {
       if (direction === 'ingress') {
         await client.send(new AuthorizeSecurityGroupIngressCommand({ GroupId: groupId, IpPermissions: perms }))
       } else {
         await client.send(new AuthorizeSecurityGroupEgressCommand({ GroupId: groupId, IpPermissions: perms }))
       }
-    } catch (error: any) {
-      const code = String(error?.name || error?.Code || '')
+    } catch (error: unknown) {
+      const record = (error && typeof error === 'object' ? error : {}) as Record<string, unknown>
+      const code = String(record.name || record.Code || '')
       if (code.includes('InvalidPermission.Duplicate')) return
       throw error
     }
@@ -401,25 +409,25 @@ export class Ec2Provider {
       (await client.send(new DescribeSubnetsCommand({ Filters: [{ Name: 'vpc-id', Values: [vpcId] }] }))).Subnets ?? []
     )
   }
-  private subnetHasIpv6(subnet: any) {
-    return (subnet.Ipv6CidrBlockAssociationSet ?? []).some((a: any) => a.Ipv6CidrBlockState?.State === 'associated')
+  private subnetHasIpv6(subnet: import('@aws-sdk/client-ec2').Subnet) {
+    return (subnet.Ipv6CidrBlockAssociationSet ?? []).some((a) => a.Ipv6CidrBlockState?.State === 'associated')
   }
-  private associatedVpcIpv6(vpc: any) {
+  private associatedVpcIpv6(vpc: import('@aws-sdk/client-ec2').Vpc) {
     for (const a of vpc.Ipv6CidrBlockAssociationSet ?? []) {
       if (a.Ipv6CidrBlockState?.State === 'associated') return providerString(a.Ipv6CidrBlock)
     }
     return ''
   }
-  private hasVpcIpv6Association(vpc: any) {
-    return (vpc.Ipv6CidrBlockAssociationSet ?? []).some((a: any) =>
+  private hasVpcIpv6Association(vpc: import('@aws-sdk/client-ec2').Vpc) {
+    return (vpc.Ipv6CidrBlockAssociationSet ?? []).some((a) =>
       ['associating', 'associated'].includes(providerString(a.Ipv6CidrBlockState?.State))
     )
   }
-  private compareSubnet = (a: any, b: any) =>
+  private compareSubnet = (a: import('@aws-sdk/client-ec2').Subnet, b: import('@aws-sdk/client-ec2').Subnet) =>
     providerString(a.AvailabilityZone).localeCompare(providerString(b.AvailabilityZone)) ||
     providerString(a.SubnetId).localeCompare(providerString(b.SubnetId))
 
-  private nextSubnetIpv6Cidr(vpcIpv6: string, subnets: any[]) {
+  private nextSubnetIpv6Cidr(vpcIpv6: string, subnets: import('@aws-sdk/client-ec2').Subnet[]) {
     // simplified: take first /64 by replacing last 16 bits with 1..n
     const [base, prefix] = vpcIpv6.split('/')
     if (!base || Number(prefix) >= 64) throw new Error('VPC IPv6 CIDR must be shorter than /64')

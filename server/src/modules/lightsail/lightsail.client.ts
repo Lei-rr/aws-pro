@@ -5,11 +5,13 @@ import {
   DeleteInstanceCommand,
   DetachStaticIpCommand,
   GetInstanceCommand,
+  type GetInstanceResult,
   GetInstancesCommand,
   GetRegionsCommand,
   GetStaticIpCommand,
   GetStaticIpsCommand,
   type GetStaticIpsResult,
+  LightsailClient,
   OpenInstancePublicPortsCommand,
   RebootInstanceCommand,
   ReleaseStaticIpCommand,
@@ -60,14 +62,14 @@ export class LightsailProvider {
     })
   }
 
-  async createInstance(account: AwsAccount, region: string, data: Record<string, any>) {
+  async createInstance(account: AwsAccount, region: string, data: Record<string, unknown>) {
     return awsCall('lightsail.create_instance', async () => {
-      const input: any = {
-        instanceNames: [data.name],
-        availabilityZone: data.zone,
-        blueprintId: data.blueprint,
-        bundleId: data.bundle,
-        ipAddressType: data.ip_address_type ?? 'dualstack',
+      const input: import('@aws-sdk/client-lightsail').CreateInstancesCommandInput = {
+        instanceNames: [typeof data.name === 'string' ? data.name : ''],
+        availabilityZone: typeof data.zone === 'string' ? data.zone : undefined,
+        blueprintId: typeof data.blueprint === 'string' ? data.blueprint : undefined,
+        bundleId: typeof data.bundle === 'string' ? data.bundle : undefined,
+        ipAddressType: (data.ip_address_type as import('@aws-sdk/client-lightsail').IpAddressType) ?? 'dualstack',
       }
       if (data.root_password) input.userData = rootPasswordUserData(String(data.root_password))
       await withAwsRetry('create Lightsail instance', () =>
@@ -203,11 +205,11 @@ export class LightsailProvider {
     })
   }
 
-  private async ensurePublicIpv4(client: any, instanceName: string) {
-    const result = await withAwsRetry('get Lightsail instance before static IP allocation', () =>
+  private async ensurePublicIpv4(client: LightsailClient, instanceName: string) {
+    const result = await withAwsRetry<GetInstanceResult>('get Lightsail instance before static IP allocation', () =>
       client.send(new GetInstanceCommand({ instanceName }))
     )
-    const publicIp = providerString((result as any)?.instance?.publicIpAddress)
+    const publicIp = providerString(result?.instance?.publicIpAddress)
     if (!publicIp) {
       throw new ApiError(
         'lightsail_static_ip_unavailable',
@@ -220,7 +222,7 @@ export class LightsailProvider {
     }
   }
 
-  private async attachedStaticIpName(client: any, instanceName: string) {
+  private async attachedStaticIpName(client: LightsailClient, instanceName: string) {
     let pageToken: string | undefined
     do {
       const result = await withAwsRetry<GetStaticIpsResult>('list attached Lightsail static IPs', () =>
@@ -234,7 +236,7 @@ export class LightsailProvider {
     return ''
   }
 
-  private async waitDetached(client: any, staticIpName: string) {
+  private async waitDetached(client: LightsailClient, staticIpName: string) {
     for (let i = 0; i < 20; i++) {
       try {
         const result = await client.send(new GetStaticIpCommand({ staticIpName }))
@@ -249,7 +251,7 @@ export class LightsailProvider {
     throw new Error(`Lightsail static IP did not detach: ${staticIpName}`)
   }
 
-  private async safeRelease(client: any, staticIpName: string) {
+  private async safeRelease(client: LightsailClient, staticIpName: string) {
     if (!staticIpName) return
     await withAwsRetry('release Lightsail static IP', () => client.send(new ReleaseStaticIpCommand({ staticIpName })), [
       'NotFoundException',

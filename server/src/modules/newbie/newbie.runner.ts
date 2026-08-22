@@ -16,7 +16,7 @@ import { isAwsErrorCode, withAwsRetry } from '../../shared/aws/aws-retry.js'
 import { NewbieTaskCancelledException } from './newbie-cancelled.js'
 import { NewbieTaskLeaseLostException } from './newbie-lease-lost.js'
 
-type LogFn = (message: string, ...args: any[]) => void
+type LogFn = (message: string, ...args: unknown[]) => void
 type CancelFn = () => boolean | Promise<boolean>
 type RuntimePatch = {
   resources?: Record<string, string>
@@ -37,7 +37,7 @@ const STEPS: Record<string, string> = {
   rds: '创建并清理 RDS 数据库（不等 available）',
 }
 
-function fmt(message: string, args: any[]) {
+function fmt(message: string, args: unknown[]) {
   let i = 0
   return message.replace(/%s/g, () => String(args[i++] ?? ''))
 }
@@ -346,7 +346,8 @@ export class NewbieTaskRunner {
     let executionError: unknown
     try {
       const role = await this.createOrGetRole(iam, roleName, assertCreating)
-      const roleArn = String((role as any)?.Role?.Arn ?? '')
+      const roleRecord = role as { Role?: { Arn?: string } } | null | undefined
+      const roleArn = String(roleRecord?.Role?.Arn ?? '')
       if (!roleArn) throw new Error('IAM role ARN empty after create/get')
       log(
         fmt('临时 IAM 角色 %s 创建成功，CreateFunction 将短重试等待传播（每 %ss）', [roleName, String(POLL_MS / 1000)])
@@ -474,7 +475,12 @@ export class NewbieTaskRunner {
     if (executionError) throw executionError
   }
 
-  private async cleanupRds(rds: any, dbName: string, log: LogFn, assertOwnership: () => Promise<void>) {
+  private async cleanupRds(
+    rds: import('@aws-sdk/client-rds').RDSClient,
+    dbName: string,
+    log: LogFn,
+    assertOwnership: () => Promise<void>
+  ) {
     log(fmt('开始清理数据库 %s ...', [dbName]))
     let lastDeleteError: unknown
     // creating 阶段 Delete 常被拒，短重试；deleting / 指令已接受即结束，绝不空等消失
@@ -532,7 +538,7 @@ export class NewbieTaskRunner {
   }
 
   private async createLambdaFunction(
-    lambda: any,
+    lambda: import('@aws-sdk/client-lambda').LambdaClient,
     functionName: string,
     roleArn: string,
     log: LogFn,
@@ -541,7 +547,7 @@ export class NewbieTaskRunner {
   ) {
     const input = {
       FunctionName: functionName,
-      Runtime: 'python3.13' as any,
+      Runtime: 'python3.13' as import('@aws-sdk/client-lambda').Runtime,
       Role: roleArn,
       Handler: 'lambda_function.lambda_handler',
       Code: { ZipFile: this.lambdaZip() },
@@ -580,7 +586,11 @@ export class NewbieTaskRunner {
     }
   }
 
-  private async createOrGetRole(iam: any, roleName: string, assertCreating: () => Promise<void>) {
+  private async createOrGetRole(
+    iam: import('@aws-sdk/client-iam').IAMClient,
+    roleName: string,
+    assertCreating: () => Promise<void>
+  ) {
     try {
       return await withAwsRetry(
         'create newbie IAM role',
@@ -617,7 +627,12 @@ export class NewbieTaskRunner {
     }
   }
 
-  private async deleteIamRole(iam: any, roleName: string, log: LogFn, assertOwnership: () => Promise<void>) {
+  private async deleteIamRole(
+    iam: import('@aws-sdk/client-iam').IAMClient,
+    roleName: string,
+    log: LogFn,
+    assertOwnership: () => Promise<void>
+  ) {
     try {
       await withAwsRetry(
         'delete newbie IAM role',
@@ -635,7 +650,7 @@ export class NewbieTaskRunner {
   }
 
   private async deleteLambdaFunction(
-    lambda: any,
+    lambda: import('@aws-sdk/client-lambda').LambdaClient,
     functionName: string,
     log: LogFn,
     assertOwnership: () => Promise<void>
@@ -661,7 +676,12 @@ export class NewbieTaskRunner {
     }
   }
 
-  private async terminateEc2Instance(client: any, id: string, log: LogFn, assertOwnership: () => Promise<void>) {
+  private async terminateEc2Instance(
+    client: import('@aws-sdk/client-ec2').EC2Client,
+    id: string,
+    log: LogFn,
+    assertOwnership: () => Promise<void>
+  ) {
     try {
       const result = await withAwsRetry(
         'terminate newbie EC2 instance',
@@ -669,7 +689,7 @@ export class NewbieTaskRunner {
         [],
         assertOwnership
       )
-      const state = String((result as any)?.TerminatingInstances?.[0]?.CurrentState?.Name ?? '')
+      const state = String(result?.TerminatingInstances?.[0]?.CurrentState?.Name ?? '')
       // 终止中 / 已终止 都算清理完成，不空等 terminated
       log(fmt('清理结果：EC2 实例 %s 终止指令已接受，当前状态：%s（视为清理完成）', [id, state || 'unknown']))
     } catch (error) {
@@ -684,7 +704,7 @@ export class NewbieTaskRunner {
     }
   }
 
-  private async latestAmazonLinuxAmi(client: any) {
+  private async latestAmazonLinuxAmi(client: import('@aws-sdk/client-ec2').EC2Client) {
     const result = await client.send(
       new DescribeImagesCommand({
         Owners: ['137112412989'],
@@ -695,7 +715,7 @@ export class NewbieTaskRunner {
         ],
       })
     )
-    const images = [...(result.Images ?? [])].sort((a: any, b: any) =>
+    const images = [...(result.Images ?? [])].sort((a, b) =>
       String(b.CreationDate ?? '').localeCompare(String(a.CreationDate ?? ''))
     )
     const ami = String(images[0]?.ImageId ?? '')
@@ -703,7 +723,7 @@ export class NewbieTaskRunner {
     return ami
   }
 
-  private async reconcileEc2Instance(client: any, name: string, log: LogFn) {
+  private async reconcileEc2Instance(client: import('@aws-sdk/client-ec2').EC2Client, name: string, log: LogFn) {
     for (let i = 0; i < 40; i++) {
       const id = await this.findEc2InstanceByName(client, name, 1)
       if (id) {
@@ -716,7 +736,7 @@ export class NewbieTaskRunner {
     return ''
   }
 
-  private async reconcileRdsInstance(rds: any, dbName: string, log: LogFn) {
+  private async reconcileRdsInstance(rds: import('@aws-sdk/client-rds').RDSClient, dbName: string, log: LogFn) {
     for (let i = 0; i < 40; i++) {
       try {
         await this.rdsStatus(rds, dbName)
@@ -731,7 +751,7 @@ export class NewbieTaskRunner {
     return false
   }
 
-  private async findEc2InstanceByName(client: any, name: string, attempts = 5) {
+  private async findEc2InstanceByName(client: import('@aws-sdk/client-ec2').EC2Client, name: string, attempts = 5) {
     for (let i = 0; i < attempts; i++) {
       const result = await withAwsRetry('find newbie EC2 instance', () =>
         client.send(
@@ -743,7 +763,7 @@ export class NewbieTaskRunner {
           })
         )
       )
-      for (const reservation of (result as any)?.Reservations ?? []) {
+      for (const reservation of result?.Reservations ?? []) {
         for (const instance of reservation.Instances ?? []) {
           const id = String(instance.InstanceId ?? '')
           if (id) return id
@@ -754,19 +774,19 @@ export class NewbieTaskRunner {
     return ''
   }
 
-  private async ec2State(client: any, id: string) {
+  private async ec2State(client: import('@aws-sdk/client-ec2').EC2Client, id: string) {
     const result = await client.send(new DescribeInstancesCommand({ InstanceIds: [id] }))
     return String(result.Reservations?.[0]?.Instances?.[0]?.State?.Name ?? '')
   }
 
-  private async rdsStatus(rds: any, dbName: string) {
+  private async rdsStatus(rds: import('@aws-sdk/client-rds').RDSClient, dbName: string) {
     const result = await withAwsRetry('describe newbie RDS instance', () =>
       rds.send(new DescribeDBInstancesCommand({ DBInstanceIdentifier: dbName }))
     )
-    return String((result as any)?.DBInstances?.[0]?.DBInstanceStatus ?? '')
+    return String(result?.DBInstances?.[0]?.DBInstanceStatus ?? '')
   }
 
-  private async rdsExists(rds: any, dbName: string) {
+  private async rdsExists(rds: import('@aws-sdk/client-rds').RDSClient, dbName: string) {
     try {
       await this.rdsStatus(rds, dbName)
       return true
@@ -777,7 +797,7 @@ export class NewbieTaskRunner {
   }
 
   private async deleteBudget(
-    budgets: any,
+    budgets: import('@aws-sdk/client-budgets').BudgetsClient,
     accountId: string,
     name: string,
     log: LogFn,
@@ -806,7 +826,11 @@ export class NewbieTaskRunner {
     }
   }
 
-  private async budgetExists(budgets: any, accountId: string, name: string) {
+  private async budgetExists(
+    budgets: import('@aws-sdk/client-budgets').BudgetsClient,
+    accountId: string,
+    name: string
+  ) {
     try {
       await withAwsRetry('describe newbie budget', () =>
         budgets.send(new DescribeBudgetCommand({ AccountId: accountId, BudgetName: name }))
@@ -818,7 +842,7 @@ export class NewbieTaskRunner {
     }
   }
 
-  private async lambdaFunctionExists(lambda: any, functionName: string) {
+  private async lambdaFunctionExists(lambda: import('@aws-sdk/client-lambda').LambdaClient, functionName: string) {
     try {
       await withAwsRetry('get newbie Lambda function', () =>
         lambda.send(new GetFunctionCommand({ FunctionName: functionName }))

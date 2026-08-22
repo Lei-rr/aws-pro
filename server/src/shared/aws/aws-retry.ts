@@ -16,14 +16,16 @@ const RETRYABLE = new Set([
 
 function awsCode(error: unknown): string {
   if (!error || typeof error !== 'object') return ''
-  const e = error as any
-  return String(e.name || e.Code || e.code || e.$metadata?.httpStatusCode || '')
+  const e = error as Record<string, unknown>
+  const meta = e.$metadata && typeof e.$metadata === 'object' ? (e.$metadata as Record<string, unknown>) : undefined
+  return String(e.name || e.Code || e.code || meta?.httpStatusCode || '')
 }
 
 function statusCode(error: unknown): number {
   if (!error || typeof error !== 'object') return 0
-  const e = error as any
-  return Number(e.$metadata?.httpStatusCode || e.statusCode || 0)
+  const e = error as Record<string, unknown>
+  const meta = e.$metadata && typeof e.$metadata === 'object' ? (e.$metadata as Record<string, unknown>) : undefined
+  return Number(meta?.httpStatusCode || e.statusCode || 0)
 }
 
 export function isRetryableAwsError(error: unknown): boolean {

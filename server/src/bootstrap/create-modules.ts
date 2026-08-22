@@ -27,7 +27,7 @@ export async function createModules() {
   const clients = new AwsClientFactory()
   const catalog = new AwsCatalogService()
   const accountsRepository = new AccountRepository(new JsonStore('accounts.json', { items: [] }))
-  const accounts = new AccountService(accountsRepository)
+  const accounts = new AccountService(accountsRepository, (accountId) => clients.evict(accountId))
   const lightsailRepository = new LightsailInstanceRepository(
     new JsonStore('lightsail-instances.json', { items: [] }),
     accounts

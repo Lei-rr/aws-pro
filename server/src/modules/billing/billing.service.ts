@@ -4,8 +4,16 @@ import { scalarString } from '../../shared/lib/scalar.js'
 import type { AwsAccountLookup } from '../../shared/aws/account-lookup.js'
 import { BillingProvider } from './billing.client.js'
 
+type YearlyBillingItem = {
+  account_id: string
+  month: string
+  cost: number
+  credit: number
+  unit: string
+}
+
 type BillingCacheValue = {
-  items: any[]
+  items: YearlyBillingItem[]
   total_cost: number
   total_credit: number
   unit: string

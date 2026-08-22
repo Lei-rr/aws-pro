@@ -405,16 +405,50 @@ export class NewbieTaskRepository {
     }))
   }
 
-  /** Keep finished tasks briefly for log polling; drop older terminal tasks. */
-  async pruneFinished(keepMs = 6 * 60 * 60 * 1000): Promise<void> {
+  /** Keep finished tasks briefly for log polling; drop older terminal tasks with max count limit. */
+  async pruneFinished(keepMs = 24 * 60 * 60 * 1000, maxFinished = 100): Promise<void> {
     const cutoff = Date.now() - keepMs
-    await this.store.transaction((current) => ({
-      next: {
-        items: (current.items ?? []).filter((t) => {
-          if (ACTIVE.has(t.status)) return true
-          return (t.updated_at || 0) >= cutoff
-        }),
-      },
-    }))
+    await this.store.transaction((current) => {
+      const items = current.items ?? []
+      const active = items.filter((t) => ACTIVE.has(t.status))
+      const finished = items
+        .filter((t) => !ACTIVE.has(t.status) && (t.updated_at || 0) >= cutoff)
+        .sort((a, b) => (b.updated_at || b.created_at || 0) - (a.updated_at || a.created_at || 0))
+        .slice(0, maxFinished)
+        .sort((a, b) => (a.updated_at || a.created_at || 0) - (b.updated_at || b.created_at || 0))
+      return { next: { items: [...finished, ...active] } }
+    })
+  }
+
+  /** Mark stale running tasks as failed if heartbeats have ceased. */
+  async recoverStaleActive(staleTimeoutMs = 5 * 60 * 1000): Promise<number> {
+    const now = Date.now()
+    let recoveredCount = 0
+    await this.store.transaction((current) => {
+      const items = (current.items ?? []).map((t) => {
+        if (!ACTIVE.has(t.status)) return t
+        const leaseUntil = Number(t.worker_lease_until || 0)
+        // If lease expired more than staleTimeoutMs ago, worker crashed or was killed
+        if (leaseUntil > 0 && now - leaseUntil > staleTimeoutMs) {
+          recoveredCount++
+          const previous = t.logs ?? []
+          const finalLine = '任务心跳超时，后台执行进程已停止，状态已安全置为失败。请核实后重试。'
+          const logs = [...previous, finalLine].slice(-2000)
+          return {
+            ...t,
+            status: 'failed' as const,
+            message: '任务心跳超时',
+            phase: 'done' as const,
+            logs,
+            worker_token: undefined,
+            worker_lease_until: undefined,
+            updated_at: now,
+          }
+        }
+        return t
+      })
+      return { next: { items } }
+    })
+    return recoveredCount
   }
 }

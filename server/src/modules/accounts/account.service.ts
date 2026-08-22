@@ -10,7 +10,10 @@ import { AccountRepository } from './account.repository.js'
 export class AccountService {
   private mutationChain: Promise<void> = Promise.resolve()
 
-  constructor(private readonly accounts: AccountRepository) {}
+  constructor(
+    private readonly accounts: AccountRepository,
+    private readonly onAccountMutated?: (accountId: string) => void
+  ) {}
 
   async allPublic(): Promise<PublicAwsAccount[]> {
     return (await this.accounts.all()).map((a) => this.publicAccount(a))
@@ -90,6 +93,7 @@ export class AccountService {
     const tags = new Set<string>(['lightsail', 'ec2'])
     for (const accountId of accountIds) {
       if (!accountId) continue
+      this.onAccountMutated?.(accountId)
       for (const tag of awsAccountTags(accountId)) tags.add(tag)
       tags.add(`lightsail:${accountId}`)
       tags.add(`ec2:${accountId}`)
