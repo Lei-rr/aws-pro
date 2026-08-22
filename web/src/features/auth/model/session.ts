@@ -18,6 +18,8 @@ export const useSessionStore = defineStore('session', () => {
   const loading = ref(false)
   const authenticated = computed(() => session.value?.authenticated === true)
   const username = computed(() => session.value?.username ?? null)
+  const isDefaultCredential = computed(() => session.value?.is_default_credential === true)
+  const version = computed(() => session.value?.version || '1.0.0')
 
   let pendingSession: Promise<SessionState> | null = null
   let requestToken = 0
@@ -40,6 +42,8 @@ export const useSessionStore = defineStore('session', () => {
           session.value = {
             authenticated: next.authenticated === true,
             username: next.authenticated === true ? next.username : null,
+            version: next.version || '1.0.0',
+            is_default_credential: next.is_default_credential === true,
           }
           checked.value = true
           if (!session.value.authenticated) notifySessionChanged()
@@ -72,6 +76,8 @@ export const useSessionStore = defineStore('session', () => {
       session.value = {
         authenticated: next.authenticated === true,
         username: next.authenticated === true ? String(next.username || loginUsername) : null,
+        version: next.version || '1.0.0',
+        is_default_credential: next.is_default_credential === true,
       }
       checked.value = true
       notifySessionChanged()
@@ -96,5 +102,17 @@ export const useSessionStore = defineStore('session', () => {
     notifySessionChanged()
   }
 
-  return { session, checked, loading, authenticated, username, load, login, logout, invalidate }
+  return {
+    session,
+    checked,
+    loading,
+    authenticated,
+    username,
+    isDefaultCredential,
+    version,
+    load,
+    login,
+    logout,
+    invalidate,
+  }
 })

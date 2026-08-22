@@ -10,7 +10,8 @@ export async function sessionStore(request: FastifyRequest<RequestOf<typeof sess
 }
 
 export async function sessionShow(request: FastifyRequest<RequestOf<typeof noRequestSchema>>, reply: FastifyReply) {
-  return reply.send(success(request.server.ctx.modules.auth.session.currentSession(request)))
+  const session = await request.server.ctx.modules.auth.session.currentSession(request)
+  return reply.send(success(session))
 }
 
 export async function sessionDelete(request: FastifyRequest<RequestOf<typeof noRequestSchema>>, reply: FastifyReply) {

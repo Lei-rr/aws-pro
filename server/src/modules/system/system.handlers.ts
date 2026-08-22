@@ -5,6 +5,7 @@ import { success, error } from '../../shared/http/api-response.js'
 import { getDataRoot } from '../../platform/storage/json-store.js'
 import { awsCacheStats } from '../../platform/cache/aws-cache.js'
 import { noRequestSchema, type RequestOf } from '../../shared/http/request-schema.js'
+import { APP_VERSION } from '../../shared/version.js'
 
 async function isDirectoryWritable(dir: string): Promise<boolean> {
   const probe = path.join(dir, `.health-check-${Date.now()}`)
@@ -35,7 +36,8 @@ export async function healthShow(_request: FastifyRequest<RequestOf<typeof noReq
   ])
   const payload = {
     status: 'ok',
-    data_dir: { path: dataDir, writable, config_readable: configReadable },
+    version: APP_VERSION,
+    data_dir: { writable, config_readable: configReadable },
     cache: awsCacheStats(),
   }
   if (!writable) {
