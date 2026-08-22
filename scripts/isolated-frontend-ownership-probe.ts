@@ -119,7 +119,7 @@ for (const file of ['web/src/pages/lightsail/LightsailPage.vue', 'web/src/pages/
   assert.match(code, /owner\.active\(\)/, `${file}: saveRemark responses must check owner.active()`)
   assert.match(
     code,
-    /ownerKey !== `\$\{accountId\.value\}::\$\{region\.value\}::/,
+    /ownerKey !== `\$\{remarkForm\.account_id\}::\$\{remarkForm\.region\}::/,
     `${file}: saveRemark owner must include instance identity`
   )
   assert.match(code, /watch\(remarkOpen,/, `${file}: missing remarkOpen close watch`)

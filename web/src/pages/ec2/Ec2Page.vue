@@ -170,9 +170,9 @@ async function operate(row: AwsInstance, action: string) {
     return
   }
   const owner = actionGeneration.claim({
-    accountId: accountId.value,
-    region: region.value,
-    instanceId: String(row.id),
+    accountId: String(row.account_id || ''),
+    region: String(row.region || ''),
+    instanceId: String(row.id || ''),
     action,
   })
   const name = ACTION_NAMES[action] || action
@@ -187,11 +187,10 @@ async function operate(row: AwsInstance, action: string) {
   if (
     !ok ||
     !owner.active() ||
-    owner.value.accountId !== accountId.value ||
-    owner.value.region !== region.value ||
     String(row.account_id) !== owner.value.accountId ||
     String(row.region) !== owner.value.region ||
-    String(row.id) !== owner.value.instanceId
+    String(row.id) !== owner.value.instanceId ||
+    action !== owner.value.action
   )
     return
   await runAction(row, action, owner)
@@ -205,10 +204,10 @@ async function syncAfterAction(owner: ScopeOwner<InstanceActionScope>) {
       account_id?: string
       region?: string
     }
-    if (!owner.active() || scopeAccountId !== accountId.value || targetRegion !== region.value) return
+    if (!owner.active()) return
     patchSyncedScope(result)
   } catch (error) {
-    if (!owner.active() || scopeAccountId !== accountId.value || targetRegion !== region.value) return
+    if (!owner.active()) return
     toast.warning(errorMessage(error, '操作已提交，但同步列表失败'))
   }
 }
@@ -276,7 +275,8 @@ async function saveRemark() {
   const ownerInstanceId = remarkForm.instance_id
   const remark = remarkForm.remark.trim()
   const ownerKey = `${ownerAccountId}::${ownerRegion}::${ownerInstanceId}`
-  if (!remarkOpen.value || ownerKey !== `${accountId.value}::${region.value}::${remarkForm.instance_id}`) return
+  if (!remarkOpen.value || ownerKey !== `${remarkForm.account_id}::${remarkForm.region}::${remarkForm.instance_id}`)
+    return
   remarkSaving.value = true
   try {
     const response = await ec2Api.updateRemark({
@@ -288,7 +288,7 @@ async function saveRemark() {
     if (
       !owner.active() ||
       !remarkOpen.value ||
-      ownerKey !== `${accountId.value}::${region.value}::${remarkForm.instance_id}`
+      ownerKey !== `${remarkForm.account_id}::${remarkForm.region}::${remarkForm.instance_id}`
     )
       return
     const updated = apiObject(response) as AwsInstance
@@ -301,10 +301,10 @@ async function saveRemark() {
     remarkOpen.value = false
     toast.success('备注已保存')
   } catch (e) {
-    if (owner.active() && ownerKey === `${accountId.value}::${region.value}::${remarkForm.instance_id}`)
+    if (owner.active() && ownerKey === `${remarkForm.account_id}::${remarkForm.region}::${remarkForm.instance_id}`)
       toast.error(errorMessage(e, '备注保存失败'))
   } finally {
-    if (owner.active() && ownerKey === `${accountId.value}::${region.value}::${remarkForm.instance_id}`)
+    if (owner.active() && ownerKey === `${remarkForm.account_id}::${remarkForm.region}::${remarkForm.instance_id}`)
       remarkSaving.value = false
   }
 }
