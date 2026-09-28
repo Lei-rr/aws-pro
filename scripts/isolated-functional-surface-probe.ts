@@ -29,10 +29,10 @@ for (const file of routeFiles) {
 }
 routes.sort((a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method))
 const routeSurface = `${routes.map((route) => `${route.method} ${route.path}`).join('\n')}\n`
-assert.equal(routes.length, 32, 'backend API route count changed')
+assert.equal(routes.length, 33, 'backend API route count changed')
 assert.equal(
   crypto.createHash('sha256').update(routeSurface).digest('hex'),
-  '8bb1df053005e8f204816a13471ddfa82b2cf05e2bb60351040f0eb0b735ecae',
+  '165568d6b6161b6fb060a78b3e763af0fba30ce78ff74ec35f8f09c3a8d87418',
   'backend API method/path surface changed'
 )
 

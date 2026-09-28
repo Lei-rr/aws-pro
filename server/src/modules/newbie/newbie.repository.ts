@@ -20,10 +20,7 @@ export class NewbieTaskRepository {
   }
 
   async findActive(): Promise<NewbieTask | null> {
-    return (
-      (await this.all()).find((t) => t.status === 'pending' || t.status === 'running' || t.status === 'cancelling') ??
-      null
-    )
+    return (await this.all()).find((t) => ACTIVE.has(t.status)) ?? null
   }
 
   async findRecent(): Promise<NewbieTask | null> {
@@ -403,6 +400,18 @@ export class NewbieTaskRepository {
     await this.store.transaction((current) => ({
       next: { items: (current.items ?? []).filter((t) => t.id !== id) },
     }))
+  }
+
+  /** Drop persisted logs. The seq window restarts at next_log_seq so old ids stay retired. */
+  async clearLogs(id: string): Promise<NewbieTask | null> {
+    await this.store.transaction((current) => ({
+      next: {
+        items: (current.items ?? []).map((t) =>
+          t.id === id ? { ...t, logs: [], log_start_seq: this.nextLogSeq(t), updated_at: Date.now() } : t
+        ),
+      },
+    }))
+    return this.find(id)
   }
 
   /** Keep finished tasks briefly for log polling; drop older terminal tasks with max count limit. */

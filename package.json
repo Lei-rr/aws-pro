@@ -1,6 +1,6 @@
 {
   "name": "aws-pro",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "AWS Lightsail / EC2 / 区域 / 配额 / 账单 / 新手任务管理面板（Node.js 版）",
   "type": "module",
   "workspaces": [
@@ -28,8 +28,10 @@
     "format": "prettier --write \"server/src/**/*.ts\" \"web/src/**/*.{ts,js,vue}\" \"scripts/**/*.{mjs,ts}\" \"*.{json,mjs}\" \"web/*.json\"",
     "typecheck": "tsc --noEmit",
     "typecheck:web": "npm --workspace aws-pro-web run typecheck",
-    "verify": "npm run format:check && npm run lint && npm run typecheck && npm run typecheck:web && npm run arch && npm run deadcode && npm run deps:check && npm run routes:check && npm run probe:contracts && npm run probe:functional && npm run build && npm run probe:static",
+    "verify": "npm run format:check && npm run version:check && npm run lint && npm run typecheck && npm run typecheck:web && npm run arch && npm run deadcode && npm run deps:check && npm run routes:check && npm run probe:contracts && npm run probe:functional && npm run build && npm run probe:static",
     "format:check": "prettier --check \"server/src/**/*.ts\" \"web/src/**/*.{ts,js,vue}\" \"scripts/**/*.{mjs,ts}\" \"*.{json,mjs}\" \"web/*.json\"",
+    "version:sync": "node scripts/version.mjs sync",
+    "version:check": "node scripts/version.mjs check",
     "arch": "node scripts/check-architecture.mjs",
     "deadcode": "knip --include files,dependencies,unlisted,unresolved --treat-config-hints-as-errors",
     "deps:check": "node scripts/check-dependencies.mjs && npm audit --omit=dev --audit-level=high",

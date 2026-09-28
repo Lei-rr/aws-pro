@@ -40,8 +40,8 @@ export class Ec2Service {
 
   async listCached(accountId?: string, region?: string, refresh = false) {
     const filters = {
-      account_id: accountId?.trim() ? v.accountId(accountId) : null,
-      region: region?.trim() ? v.region(region) : null,
+      account_id: v.optionalAccountId(accountId),
+      region: v.optionalRegion(region),
     }
     const result = await withAwsCache<Ec2Instance[]>({
       key: { prefix: 'aws:ec2:list', parts: { account_id: filters.account_id, region: filters.region } },
@@ -142,9 +142,13 @@ export class Ec2Service {
   private normalizeCreate(data: Record<string, unknown>) {
     v.required(data, ['name', 'ami', 'instance_type'])
     const ami = scalarString(data.ami)
-    if (!AMIS[ami] && !ami.startsWith('ami-')) throw new ApiError('ec2_ami_invalid', 'Invalid EC2 AMI', 422, { ami })
+    if (!Object.hasOwn(AMIS, ami) && !ami.startsWith('ami-')) {
+      throw new ApiError('ec2_ami_invalid', 'Invalid EC2 AMI', 422, { ami })
+    }
     const instanceType = scalarString(data.instance_type)
-    if (!INSTANCE_TYPES[instanceType]) throw new ApiError('ec2_instance_type_invalid', 'Invalid instance type', 422)
+    if (!Object.hasOwn(INSTANCE_TYPES, instanceType)) {
+      throw new ApiError('ec2_instance_type_invalid', 'Invalid instance type', 422)
+    }
     return {
       name: v.instanceName(scalarString(data.name)),
       ami,

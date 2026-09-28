@@ -58,6 +58,7 @@ export function unsealSession(token: string | undefined, secret: string): Sessio
   if (parts.length !== 3) return null
   try {
     const [ivPart, tagPart, dataPart] = parts
+    if (!ivPart || !tagPart || !dataPart) return null
     const key = keyFromSecret(secret)
     const iv = fromB64url(ivPart)
     const tag = fromB64url(tagPart)

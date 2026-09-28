@@ -1,6 +1,14 @@
 import type { FastifyInstance } from 'fastify'
 import { noRequestSchema } from '../../shared/http/request-schema.js'
-import { newbieActive, newbieCancel, newbieRecent, newbieShow, newbieStore, newbieStream } from './newbie.handlers.js'
+import {
+  newbieActive,
+  newbieCancel,
+  newbieClearLogs,
+  newbieRecent,
+  newbieShow,
+  newbieStore,
+  newbieStream,
+} from './newbie.handlers.js'
 import { newbieStoreSchema, newbieStreamSchema, newbieTaskParamsSchema } from './newbie.schema.js'
 
 export async function routes(app: FastifyInstance) {
@@ -9,5 +17,6 @@ export async function routes(app: FastifyInstance) {
   app.get('/newbie/tasks/recent', { schema: noRequestSchema }, newbieRecent)
   app.get('/newbie/tasks/:task', { schema: newbieTaskParamsSchema }, newbieShow)
   app.post('/newbie/tasks/:task/cancel', { schema: newbieTaskParamsSchema }, newbieCancel)
+  app.delete('/newbie/tasks/:task/logs', { schema: newbieTaskParamsSchema }, newbieClearLogs)
   app.get('/newbie/tasks/:task/stream', { schema: newbieStreamSchema }, newbieStream)
 }

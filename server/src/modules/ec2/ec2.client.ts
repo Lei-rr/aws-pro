@@ -309,7 +309,9 @@ export class Ec2Provider {
     const subnets = await this.subnets(client, vpcId)
     if (!subnets.length) throw new Error('Default VPC has no subnet')
     subnets.sort(this.compareSubnet)
-    return providerString(subnets[0].SubnetId)
+    const first = subnets[0]
+    if (!first) throw new Error('Default VPC has no subnet')
+    return providerString(first.SubnetId)
   }
 
   private async selectIpv6Subnet(client: EC2Client) {
@@ -319,13 +321,15 @@ export class Ec2Provider {
     const withIpv6 = subnets.filter((s) => this.subnetHasIpv6(s))
     if (withIpv6.length) {
       withIpv6.sort(this.compareSubnet)
-      return providerString(withIpv6[0].SubnetId)
+      const first = withIpv6[0]
+      if (first) return providerString(first.SubnetId)
     }
     // ensure vpc ipv6
     await this.ensureVpcIpv6(client, vpcId)
     subnets = await this.subnets(client, vpcId)
     subnets.sort(this.compareSubnet)
     const target = subnets[0]
+    if (!target) throw new Error('Default VPC has no subnet')
     const subnetId = providerString(target.SubnetId)
     if (!this.subnetHasIpv6(target)) {
       // try associate a /64 from amazon-provided block if present

@@ -66,12 +66,4 @@ export class LightsailInstanceRepository {
       next: { items: (current.items ?? []).filter((item) => item.account_id !== accountId) },
     }))
   }
-
-  async renameAccount(oldId: string, newId: string): Promise<void> {
-    await this.store.transaction((current) => ({
-      next: {
-        items: (current.items ?? []).map((item) => (item.account_id === oldId ? { ...item, account_id: newId } : item)),
-      },
-    }))
-  }
 }

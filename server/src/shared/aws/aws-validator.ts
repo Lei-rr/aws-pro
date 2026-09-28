@@ -14,13 +14,26 @@ export function required(data: Record<string, unknown>, fields: string[]): void 
   }
 }
 
+function hasControlChars(value: string): boolean {
+  for (const char of value) {
+    const code = char.codePointAt(0) ?? 0
+    if (code <= 0x1f || code === 0x7f) return true
+  }
+  return false
+}
+
 export function accountId(value: string): string {
   const id = value.trim()
-  if (!/^\d{12}$/.test(id) && !/^[A-Za-z0-9._:-]{2,64}$/.test(id)) {
-    // allow custom account labels used by personal panels, still non-empty
-    if (id === '') throw new ApiError('account_id_invalid', 'Invalid account id', 422)
+  // Labels are free-form (mail addresses are common), so only reject what breaks storage, logs, and cache keys.
+  if (id === '' || id.length > 64 || hasControlChars(id)) {
+    throw new ApiError('account_id_invalid', 'Invalid account id', 422)
   }
   return id
+}
+
+/** Blank input means "no filter", not "invalid filter". */
+export function optionalAccountId(value?: string): string | null {
+  return value?.trim() ? accountId(value) : null
 }
 
 export function region(value: string): string {
@@ -29,6 +42,11 @@ export function region(value: string): string {
     throw new ApiError('region_invalid', 'Invalid region', 422, { region })
   }
   return region
+}
+
+/** Blank input means "no filter", not "invalid filter". */
+export function optionalRegion(value?: string): string | null {
+  return value?.trim() ? region(value) : null
 }
 
 export function instanceName(value: string): string {

@@ -5,7 +5,7 @@ import { scalarString } from '../../shared/lib/scalar.js'
 import type { AwsAccountLookup } from '../../shared/aws/account-lookup.js'
 import { withAccountMutation } from '../../shared/aws/account-mutation.js'
 import { NewbieTaskRepository } from './newbie.repository.js'
-import { NewbieTaskRunner } from './newbie.runner.js'
+import { fmt, NewbieTaskRunner } from './newbie.runner.js'
 import { NewbieTaskLeaseLostException } from './newbie-lease-lost.js'
 
 export class NewbieTaskService {
@@ -90,6 +90,13 @@ export class NewbieTaskService {
     await this.tasks.appendLog(id, '已收到终止请求，后台任务将尽快停止并清理临时资源...')
     this.ensureBackground(id)
     return (await this.tasks.find(id)) ?? task
+  }
+
+  /** Clear persisted logs of one task. Running tasks keep appending afterwards. */
+  async clearLogs(id: string) {
+    id = this.taskId(id)
+    const task = await this.find(id)
+    return (await this.tasks.clearLogs(id)) ?? task
   }
 
   /** Read-only SSE: tail persisted logs. Execution is independent of this connection. */
@@ -230,8 +237,7 @@ export class NewbieTaskService {
     try {
       const account = await this.accounts.requireAccount(task.account_id)
       const appendRunnerLog = (message: string, ...args: unknown[]) => {
-        let i = 0
-        const line = String(message).replace(/%s/g, () => String(args[i++] ?? ''))
+        const line = fmt(String(message), args)
         logChain = logChain.catch(() => undefined).then(() => this.tasks.appendLog(id, line, workerToken))
       }
       if (!(await this.tasks.ownsExecution(id, workerToken))) return
@@ -274,8 +280,7 @@ export class NewbieTaskService {
   ) {
     let logChain = Promise.resolve()
     const appendRunnerLog = (message: string, ...args: unknown[]) => {
-      let i = 0
-      const line = String(message).replace(/%s/g, () => String(args[i++] ?? ''))
+      const line = fmt(String(message), args)
       logChain = logChain.then(() => this.tasks.appendLog(id, line, workerToken))
     }
     try {

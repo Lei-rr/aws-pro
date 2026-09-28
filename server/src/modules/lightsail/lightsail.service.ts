@@ -17,7 +17,10 @@ export class LightsailService {
   ) {}
 
   async listCached(accountId?: string, region?: string, refresh = false) {
-    const filters = this.normalizeListFilters(accountId, region)
+    const filters = {
+      account_id: v.optionalAccountId(accountId),
+      region: v.optionalRegion(region),
+    }
     const result = await withAwsCache<LightsailInstance[]>({
       key: { prefix: 'aws:lightsail:list', parts: { account_id: filters.account_id, region: filters.region } },
       tags: this.tags(filters.account_id),
@@ -141,13 +144,6 @@ export class LightsailService {
     }
     invalidateAwsCache(this.mutationTags(account.id))
     return `${action} submitted`
-  }
-
-  private normalizeListFilters(accountId?: string, region?: string) {
-    return {
-      account_id: accountId?.trim() ? v.accountId(accountId) : null,
-      region: region?.trim() ? v.region(region) : null,
-    }
   }
 
   private normalizeCreate(data: Record<string, unknown>) {

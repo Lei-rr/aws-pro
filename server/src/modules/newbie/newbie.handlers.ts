@@ -36,6 +36,15 @@ export async function newbieCancel(
   )
 }
 
+export async function newbieClearLogs(
+  request: FastifyRequest<RequestOf<typeof newbieTaskParamsSchema>>,
+  reply: FastifyReply
+) {
+  return reply.send(
+    success(presentNewbieTask(await request.server.ctx.modules.newbie.service.clearLogs(request.params.task)))
+  )
+}
+
 /** Read-only log stream. Execution continues in background even if client disconnects. */
 export async function newbieStream(request: FastifyRequest<RequestOf<typeof newbieStreamSchema>>, reply: FastifyReply) {
   const ac = new AbortController()

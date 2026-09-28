@@ -197,7 +197,7 @@ for (const file of sourceFiles) {
   if (/\bapp\.(?:get|post|put|patch|delete)\s*\(/.test(code) && !file.endsWith('.routes.ts'))
     report('ARCH010', file, 1, 'routes belong in *.routes.ts')
 }
-if (routeCalls !== 32) report('ARCH011', 'server/src', 1, `expected 32 routes, found ${routeCalls}`)
+if (routeCalls !== 33) report('ARCH011', 'server/src', 1, `expected 33 routes, found ${routeCalls}`)
 if (schemaRoutes !== routeCalls)
   report('ARCH012', 'server/src', 1, `${routeCalls - schemaRoutes} route(s) missing schema`)
 for (const file of sourceFiles.filter((f) => f.endsWith('.handlers.ts'))) {

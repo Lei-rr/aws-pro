@@ -92,6 +92,10 @@
     "path": "/api/newbie/tasks/:task/cancel"
   },
   {
+    "method": "DELETE",
+    "path": "/api/newbie/tasks/:task/logs"
+  },
+  {
     "method": "GET",
     "path": "/api/newbie/tasks/:task/stream"
   },

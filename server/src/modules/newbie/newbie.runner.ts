@@ -29,15 +29,18 @@ type CheckpointFn = (patch: RuntimePatch) => void | Promise<void>
 const REGION = 'us-east-1'
 /** 状态/重试轮询间隔（用户约定 3s） */
 const POLL_MS = 3000
-const STEPS: Record<string, string> = {
+const STEPS = {
   all: '全部任务',
   budget: '设置 AWS Cost Budget',
   ec2: '创建并终止 EC2 实例（不等 running）',
   lambda: '创建并清理 Lambda 函数',
   rds: '创建并清理 RDS 数据库（不等 available）',
-}
+} as const
+/** 供运行时按字符串键动态索引（`as const` 对象不接受任意 string 键）。 */
+const stepTitles: Record<string, string> = STEPS
 
-function fmt(message: string, args: unknown[]) {
+/** printf 风格的 %s 占位替换，runner 与 service 共用同一实现。 */
+export function fmt(message: string, args: unknown[]) {
   let i = 0
   return message.replace(/%s/g, () => String(args[i++] ?? ''))
 }
@@ -46,11 +49,11 @@ export class NewbieTaskRunner {
   constructor(private readonly clients: AwsClientFactory) {}
 
   hasStep(step: string) {
-    return Boolean(STEPS[step])
+    return Boolean(stepTitles[step])
   }
 
   stepLabel(step: string) {
-    return STEPS[step] ?? step
+    return stepTitles[step] ?? step
   }
 
   async run(
@@ -219,10 +222,7 @@ export class NewbieTaskRunner {
     checkpoint: CheckpointFn,
     assertOwnership: () => Promise<void>
   ) {
-    const assertCreating = async () => {
-      await assertOwnership()
-      await this.ensureNotCancelled(cancelled)
-    }
+    const assertCreating = this.makeAssertCreating(assertOwnership, cancelled)
     await assertCreating()
     const name = `AutoBudget-${this.shortId(operationId, 12)}`
     const budgets = this.clients.budgets(account)
@@ -264,10 +264,7 @@ export class NewbieTaskRunner {
     checkpoint: CheckpointFn,
     assertOwnership: () => Promise<void>
   ) {
-    const assertCreating = async () => {
-      await assertOwnership()
-      await this.ensureNotCancelled(cancelled)
-    }
+    const assertCreating = this.makeAssertCreating(assertOwnership, cancelled)
     await assertCreating()
     const client = this.clients.ec2(account, REGION)
     const ami = await this.latestAmazonLinuxAmi(client)
@@ -330,10 +327,7 @@ export class NewbieTaskRunner {
     checkpoint: CheckpointFn,
     assertOwnership: () => Promise<void>
   ) {
-    const assertCreating = async () => {
-      await assertOwnership()
-      await this.ensureNotCancelled(cancelled)
-    }
+    const assertCreating = this.makeAssertCreating(assertOwnership, cancelled)
     await assertCreating()
     const iam = this.clients.iam(account)
     const lambda = this.clients.lambda(account, REGION)
@@ -406,10 +400,7 @@ export class NewbieTaskRunner {
     checkpoint: CheckpointFn,
     assertOwnership: () => Promise<void>
   ) {
-    const assertCreating = async () => {
-      await assertOwnership()
-      await this.ensureNotCancelled(cancelled)
-    }
+    const assertCreating = this.makeAssertCreating(assertOwnership, cancelled)
     await assertCreating()
     const rds = this.clients.rds(account, REGION)
     const dbName = `db-${this.shortId(operationId, 12)}`
@@ -912,7 +903,7 @@ export class NewbieTaskRunner {
   private crc32(buf: Buffer): number {
     let crc = 0xffffffff
     for (let i = 0; i < buf.length; i++) {
-      crc ^= buf[i]
+      crc ^= buf[i] as number
       for (let j = 0; j < 8; j++) {
         const mask = -(crc & 1)
         crc = (crc >>> 1) ^ (0xedb88320 & mask)
@@ -961,6 +952,14 @@ export class NewbieTaskRunner {
   private shortId(value: string, length: number) {
     const id = value.toLowerCase().replace(/[^a-z0-9]+/g, '') || crypto.randomBytes(8).toString('hex')
     return id.slice(0, length)
+  }
+
+  /** 创建阶段共用的所有权 + 取消断言，四个资源创建流程复用。 */
+  private makeAssertCreating(assertOwnership: () => Promise<void>, cancelled: CancelFn) {
+    return async () => {
+      await assertOwnership()
+      await this.ensureNotCancelled(cancelled)
+    }
   }
 
   private async ensureNotCancelled(cancelled: CancelFn) {

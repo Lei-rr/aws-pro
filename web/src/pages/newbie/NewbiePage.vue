@@ -112,7 +112,7 @@ async function pollTask(taskId: string, version: number) {
     const list = Array.isArray(t.logs) ? t.logs : []
     const startSeq = Number(t.log_start_seq) > 0 ? Number(t.log_start_seq) : 1
     for (let index = Math.max(0, lastLogSeq - startSeq + 1); index < list.length; index++) {
-      appendLog(list[index])
+      appendLog(list[index] as string)
       lastLogSeq = startSeq + index
     }
     if (['completed', 'failed', 'cancelled'].includes(t.status)) {
@@ -208,7 +208,7 @@ async function restoreActiveTask() {
     restoreFailed.value = false
     accountId.value = t.account_id || accountId.value
     step.value = t.step || step.value
-    logs.value = Array.isArray(t.logs) && t.logs.length ? [...t.logs] : logs.value
+    logs.value = Array.isArray(t.logs) && t.logs.length ? [...t.logs] : ['等待开始任务...']
     lastLogSeq =
       Number(t.next_log_seq) > 0
         ? Number(t.next_log_seq) - 1
@@ -330,9 +330,34 @@ async function confirmCancel() {
   await cancelTask(taskId)
 }
 
-function clearLog() {
-  logs.value = ['等待开始任务...']
-  lastLogSeq = 0
+async function clearLog() {
+  const taskId = task.value?.id
+  if (!taskId) {
+    logs.value = ['等待开始任务...']
+    lastLogSeq = 0
+    return
+  }
+  if (
+    !(await confirmDialog({
+      title: '确认清空日志',
+      description: '将删除该任务已保存的全部日志，删除后无法恢复。确定清空？',
+      confirmText: '清空日志',
+      destructive: true,
+    }))
+  )
+    return
+  try {
+    const response = await newbieApi.clearTaskLogs(taskId)
+    const t = apiPayload<NewbieTask>(response)
+    if (disposed || !t || t.id !== task.value?.id) return
+    task.value = t
+    // 与服务端序号窗口对齐，避免刷新或重连时把已清空的旧日志重新拉回
+    lastLogSeq = Number(t.log_start_seq) > 0 ? Number(t.log_start_seq) - 1 : 0
+    logs.value = ['日志已清空。']
+    toast.success('日志已清空')
+  } catch (e) {
+    toast.error(errorMessage(e, '清空日志失败'))
+  }
 }
 
 onMounted(() => {
