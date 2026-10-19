@@ -5,7 +5,15 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Button } from '@/shared/ui/button'
 import type { AwsInstance } from '@/shared/api/types'
 
-type ActionItem = { key: string; label: string; danger?: boolean }
+type ActionItem = { key: string; label: string; danger?: boolean; disabled?: boolean }
+
+/** 厂商中间态：实例正在迁移，启停不可再次下发，但「删除」仍可执行。 */
+const TRANSIENT_LABEL: Record<string, string> = {
+  pending: '启动中…',
+  starting: '启动中…',
+  stopping: '停止中…',
+  rebooting: '重启中…',
+}
 
 const props = defineProps<{
   row: AwsInstance
@@ -28,6 +36,13 @@ const actions = computed<ActionItem[]>(() => {
   if (props.row.state === 'stopped') {
     return [
       { key: 'start', label: '启动' },
+      { key: 'delete', label: '删除', danger: true },
+    ]
+  }
+  const state = String(props.row.state || '')
+  if (TRANSIENT_LABEL[state]) {
+    return [
+      { key: 'settling', label: TRANSIENT_LABEL[state], disabled: true },
       { key: 'delete', label: '删除', danger: true },
     ]
   }
@@ -55,8 +70,9 @@ const actions = computed<ActionItem[]>(() => {
         <DropdownMenuItem
           v-for="action in actions"
           :key="action.key"
+          :disabled="action.disabled"
           :variant="action.danger ? 'destructive' : 'default'"
-          @click="emit('operate', row, action.key)"
+          @click="!action.disabled && emit('operate', row, action.key)"
         >
           {{ action.label }}
         </DropdownMenuItem>

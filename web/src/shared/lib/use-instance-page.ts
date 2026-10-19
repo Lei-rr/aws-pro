@@ -24,6 +24,20 @@ export type InstanceActionScope = {
   action: string
 }
 
+/** 云厂商中间态：实例正在迁移，启停按钮此时不可用。 */
+const TRANSIENT_STATES = new Set(['pending', 'stopping', 'starting', 'rebooting', 'shutting-down'])
+
+/** 动作提交后应追到的终态，用于把「停止中」自动刷成「已停止」并放出开机按钮。 */
+const SETTLE_STATES: Record<string, string[]> = {
+  stop: ['stopped', 'terminated'],
+  start: ['running', 'terminated'],
+  reboot: ['running'],
+  terminate: ['terminated'],
+}
+
+const SETTLE_INTERVAL_MS = 4000
+const SETTLE_MAX_ATTEMPTS = 30
+
 export type InstancePageOptions = {
   api: InstancePageApi
   pageSizeScope: string
@@ -202,6 +216,59 @@ export function useInstancePage(options: InstancePageOptions) {
     }
   }
 
+  /** 静默同步单个 scope：不弹 toast，失败只抛出由调用方决定。 */
+  async function syncScopeQuiet(accountId: string, region: string) {
+    const result = apiObject(await options.api.sync({ account_id: accountId, region })) as {
+      instances?: AwsInstance[]
+      account_id?: string
+      region?: string
+    }
+    patchSyncedScope(result)
+    return result
+  }
+
+  /**
+   * 启停是异步的：提交后厂商先返回 stopping/pending，列表若停在中间态就只剩「终止」。
+   * 这里轮询到终态，把「启动」按钮真正放出来。
+   */
+  async function followSettle(owner: ScopeOwner<InstanceActionScope>, action: string) {
+    const targets = SETTLE_STATES[action]
+    if (!targets) return
+    const { accountId: scopeAccountId, region: scopeRegion, identity } = owner.value
+    for (let attempt = 0; attempt < SETTLE_MAX_ATTEMPTS; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, SETTLE_INTERVAL_MS))
+      if (!owner.active()) return
+      try {
+        const result = await syncScopeQuiet(scopeAccountId, scopeRegion)
+        if (!owner.active()) return
+        const row = (result.instances || []).find((item) => options.identityOf(item) === identity)
+        if (!row || targets.includes(String(row.state || ''))) return
+      } catch {
+        return
+      }
+    }
+  }
+
+  /** 进入页面时若本地缓存停在中间态（上次停止未追平），补一次静默同步。 */
+  async function settleCachedTransient() {
+    const scopes = new Map<string, { accountId: string; region: string }>()
+    for (const row of instances.value) {
+      if (!TRANSIENT_STATES.has(String(row.state || ''))) continue
+      if (!row.account_id || !row.region) continue
+      scopes.set(`${row.account_id}|${row.region}`, {
+        accountId: String(row.account_id),
+        region: String(row.region),
+      })
+    }
+    for (const scope of scopes.values()) {
+      try {
+        await syncScopeQuiet(scope.accountId, scope.region)
+      } catch {
+        /* 缓存追平失败不打扰用户，手动同步仍可用 */
+      }
+    }
+  }
+
   async function runAction(row: AwsInstance, action: string, owner: ScopeOwner<InstanceActionScope>) {
     const identity = options.identityOf(row)
     const key = `${options.actionBusyPrefix(row)}${action}`
@@ -229,6 +296,8 @@ export function useInstancePage(options: InstancePageOptions) {
         instances.value = instances.value.filter((item) => options.rowKey(item) !== options.rowKey(row))
       }
       await syncAfterAction(owner)
+      // 提交成功后异步追平中间态，让「启动/停止」按钮随真实状态切换
+      if (owner.active()) void followSettle(owner, action)
     } catch (e) {
       if (owner.active()) toast.error(errorMessage(e, `${name}失败`))
     } finally {
@@ -262,6 +331,7 @@ export function useInstancePage(options: InstancePageOptions) {
       toast.error(errorMessage(e, options.texts.configFail))
     }
     await runLoad()
+    void settleCachedTransient()
   })
 
   onBeforeUnmount(() => {

@@ -202,7 +202,16 @@ function openCreate() {
       :package-label="packageLabel"
       :row-key="rowKey"
       :row-busy="isRowActionBusy"
-      :state-labels="{ running: '运行中', stopped: '已停止', pending: '处理中' }"
+      :state-labels="{
+        running: '运行中',
+        stopped: '已停止',
+        pending: '启动中',
+        starting: '启动中',
+        stopping: '停止中',
+        rebooting: '重启中',
+        'shutting-down': '终止中',
+        terminated: '已终止',
+      }"
       empty-text="暂无 Lightsail 实例，请选择账号和区域后同步。"
       @operate="operate"
       @remark="openRemark"
