@@ -11,7 +11,8 @@
   },
   "overrides": {
     "less": ">=4.8.1",
-    "image-size": ">=1.2.1"
+    "image-size": ">=1.2.1",
+    "source-map-js": ">=1.2.2"
   },
   "scripts": {
     "dev": "npm run dev:server",
